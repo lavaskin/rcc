@@ -8,7 +8,10 @@ namespace ReviewClips.Core.Tests.Selection;
 
 internal static class SelectionTestData
 {
-    public static MediaInfo Info(double durationSeconds, string path = "/movies/film.mkv") => new()
+    public static MediaInfo Info(
+        double durationSeconds,
+        string path = "/movies/film.mkv",
+        IReadOnlyList<Chapter>? chapters = null) => new()
     {
         Path = path,
         FileSizeBytes = 1_000_000,
@@ -21,7 +24,29 @@ internal static class SelectionTestData
         PixelFormat = "yuv420p",
         SampleAspectRatio = Ratio.One,
         HasAudio = true,
+        Chapters = chapters ?? [],
     };
+
+    /// <summary>Builds contiguous chapters from <c>(title, endSeconds)</c> pairs.</summary>
+    public static IReadOnlyList<Chapter> Chapters(params (string? Title, double EndSeconds)[] parts)
+    {
+        var chapters = new List<Chapter>(parts.Length);
+        var start = 0d;
+
+        for (var i = 0; i < parts.Length; i++)
+        {
+            chapters.Add(new Chapter
+            {
+                Index = i,
+                Range = Range(start, parts[i].EndSeconds),
+                Title = parts[i].Title,
+            });
+
+            start = parts[i].EndSeconds;
+        }
+
+        return chapters;
+    }
 
     /// <summary>
     /// Builds an analysis with a synthetic motion curve. <paramref name="motionAt"/> maps a

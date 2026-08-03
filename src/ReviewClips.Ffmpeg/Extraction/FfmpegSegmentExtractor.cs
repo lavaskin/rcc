@@ -102,6 +102,13 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", "[vout]"]);
 
+        // Drop the source's chapter markers. FFmpeg would otherwise copy them from the input
+        // and merely shift them to the cut, so a three second segment ends up carrying the
+        // whole film's chapter list. They describe footage this segment does not contain, and
+        // the filter-graph stitcher would then propagate the first segment's copy into the
+        // finished file.
+        arguments.AddRange(["-map_chapters", "-1"]);
+
         if (request.Mute || !request.Source.HasAudio)
         {
             arguments.Add("-an");

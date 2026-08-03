@@ -68,6 +68,10 @@ public sealed class ConcatDemuxerStitcher : IStitcher
         "-safe", "0",
         "-i", listPath,
         "-c", "copy",
+
+        // The concat demuxer happens not to forward chapters today, but the output must not
+        // depend on that: state it, so both stitchers make the same guarantee.
+        "-map_chapters", "-1",
         "-movflags", "+faststart",
         request.OutputPath,
     ];

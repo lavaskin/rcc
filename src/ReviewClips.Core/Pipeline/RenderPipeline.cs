@@ -82,6 +82,16 @@ public sealed class RenderPipeline
             throw new RenderPlanningException("None of the supplied sources contained a usable video stream.");
         }
 
+        // An explicit --skip-chapter that matches nothing is almost always a typo or a wrong
+        // assumption about the titles, and silently doing nothing is the worst outcome.
+        if (request.Selection.SkipChapterPatterns.Count > 0
+            && !infos.Any(i => Media.ChapterFilter.Matching(i.Chapters, request.Selection.SkipChapterPatterns).Count > 0))
+        {
+            warnings.Add(infos.Any(i => i.HasChapters)
+                ? "No chapter title matched --skip-chapter. Run 'rcc probe --chapters' to see the titles."
+                : "--skip-chapter was given, but none of the sources carry chapter markers.");
+        }
+
         // 2. Plan the cadence up front so both selection and stitching agree on lengths.
         // The target is the runtime of the finished file, so transition overlap is compensated
         // here rather than silently shortening the result.
@@ -491,6 +501,13 @@ public sealed class RenderPipeline
         if (request.Selection.RejectBlack || request.Selection.RejectFrozen)
         {
             reasons.Add("black/frozen rejection may have excluded everything (try --no-reject-black / --no-reject-frozen)");
+        }
+
+        var skippedChapters = sources
+            .Sum(s => Media.ChapterFilter.Matching(s.Info.Chapters, request.Selection.EffectiveChapterPatterns).Count);
+        if (skippedChapters > 0)
+        {
+            reasons.Add($"{skippedChapters} chapter(s) were skipped by title (try --chapters off)");
         }
 
         var detail = reasons.Count > 0

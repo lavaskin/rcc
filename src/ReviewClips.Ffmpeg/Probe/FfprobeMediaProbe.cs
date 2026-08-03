@@ -40,6 +40,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe
             "-print_format", "json",
             "-show_format",
             "-show_streams",
+            "-show_chapters",
             full,
         ];
 
@@ -89,6 +90,7 @@ public sealed class FfprobeMediaProbe : IMediaProbe
             PixelFormat = video.PixelFormat ?? "unknown",
             SampleAspectRatio = ParseRatio(video.SampleAspectRatio) ?? Ratio.One,
             HasAudio = parsed.Streams.Any(s => s.IsAudio),
+            Chapters = ResolveChapters(parsed.Chapters, duration),
             ColorTransfer = video.ColorTransfer,
             ColorPrimaries = video.ColorPrimaries,
             ColorSpace = video.ColorSpace,
@@ -102,7 +104,121 @@ public sealed class FfprobeMediaProbe : IMediaProbe
                 info.ColorTransfer);
         }
 
+        if (info.HasChapters)
+        {
+            _logger.LogInformation(
+                "{File} carries {Count} chapter marker(s), {Named} of them named",
+                Path.GetFileName(full),
+                info.Chapters.Count,
+                info.Chapters.Count(c => c.MeaningfulTitle is not null));
+        }
+
         return info;
+    }
+
+    /// <summary>
+    /// Turns raw ffprobe chapters into a sorted, non-degenerate list.
+    /// <para>
+    /// Entries are dropped rather than repaired when unusable: a chapter list is an optional
+    /// hint, so a malformed one must not be able to fail a probe or to produce a range that
+    /// later gets subtracted from the eligible footage by mistake.
+    /// </para>
+    /// </summary>
+    internal static IReadOnlyList<Chapter> ResolveChapters(
+        IReadOnlyList<FfprobeChapter> raw,
+        TimeSpan duration)
+    {
+        if (raw.Count == 0)
+        {
+            return [];
+        }
+
+        var parsed = new List<(TimeSpan Start, TimeSpan End, string? Title)>(raw.Count);
+
+        foreach (var entry in raw)
+        {
+            if (ParseChapterSeconds(entry.StartTime) is not { } start
+                || ParseChapterSeconds(entry.EndTime) is not { } end)
+            {
+                continue;
+            }
+
+            // Some muxers write a final chapter that runs past the reported duration.
+            if (duration > TimeSpan.Zero && end > duration)
+            {
+                end = duration;
+            }
+
+            if (end <= start)
+            {
+                continue;
+            }
+
+            parsed.Add((start, end, ReadTitle(entry.Tags)));
+        }
+
+        if (parsed.Count == 0)
+        {
+            return [];
+        }
+
+        parsed.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+        var chapters = new List<Chapter>(parsed.Count);
+        for (var i = 0; i < parsed.Count; i++)
+        {
+            var (start, end, title) = parsed[i];
+            chapters.Add(new Chapter
+            {
+                Index = i,
+                Range = new TimeRange(start, end),
+                Title = title,
+            });
+        }
+
+        return chapters;
+    }
+
+    /// <summary>
+    /// Parses a chapter timestamp. Distinct from <see cref="TryParseSeconds"/> because the first
+    /// chapter legitimately starts at zero, whereas a zero stream duration means "unknown".
+    /// </summary>
+    internal static TimeSpan? ParseChapterSeconds(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)
+            || !double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+            || double.IsNaN(seconds)
+            || double.IsInfinity(seconds)
+            || seconds < 0)
+        {
+            return null;
+        }
+
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static string? ReadTitle(Dictionary<string, JsonElement>? tags)
+    {
+        if (tags is null)
+        {
+            return null;
+        }
+
+        foreach (var (key, value) in tags)
+        {
+            if (!string.Equals(key, "title", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var text = value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : value.ToString();
+
+            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        }
+
+        return null;
     }
 
     /// <summary>

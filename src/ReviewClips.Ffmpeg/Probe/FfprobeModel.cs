@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ReviewClips.Ffmpeg.Probe;
@@ -8,8 +9,32 @@ internal sealed class FfprobeOutput
     [JsonPropertyName("streams")]
     public List<FfprobeStream> Streams { get; init; } = [];
 
+    [JsonPropertyName("chapters")]
+    public List<FfprobeChapter> Chapters { get; init; } = [];
+
     [JsonPropertyName("format")]
     public FfprobeFormat? Format { get; init; }
+}
+
+/// <summary>One entry of <c>ffprobe -show_chapters</c>.</summary>
+internal sealed class FfprobeChapter
+{
+    [JsonPropertyName("id")]
+    public long Id { get; init; }
+
+    /// <summary>Start in seconds, e.g. <c>"0.000000"</c>. Unlike a stream, zero is legitimate.</summary>
+    [JsonPropertyName("start_time")]
+    public string? StartTime { get; init; }
+
+    [JsonPropertyName("end_time")]
+    public string? EndTime { get; init; }
+
+    /// <summary>
+    /// Chapter metadata, normally just <c>title</c>. Read as <see cref="JsonElement"/> rather
+    /// than <c>string</c> because a non-string tag value would otherwise fail the whole probe.
+    /// </summary>
+    [JsonPropertyName("tags")]
+    public Dictionary<string, JsonElement>? Tags { get; init; }
 }
 
 internal sealed class FfprobeStream

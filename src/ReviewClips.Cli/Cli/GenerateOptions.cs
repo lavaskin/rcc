@@ -78,6 +78,16 @@ internal sealed class GenerateOptions
         "--exclude",
         "Never sample inside this range. Repeatable.");
 
+    public Option<ChapterSkipMode?> Chapters { get; } = ValueParsers.EnumOption<ChapterSkipMode>(
+        "--chapters",
+        "Whether chapters titled as openings, credits or recaps are skipped.");
+
+    public Option<List<string>> SkipChapter { get; } = ValueParsers.TextListOption(
+        "--skip-chapter",
+        "Also skip chapters whose title matches. Substring, or a glob if it contains * or ?. "
+        + "Repeatable. Run 'rcc probe --chapters' to see the titles.",
+        "pattern");
+
     public Option<TimeSpan?> MinGap { get; } = ValueParsers.Duration(
         "--min-gap",
         "Minimum spacing between chosen clips, so they don't come from the same moment.");
@@ -337,6 +347,8 @@ internal sealed class GenerateOptions
         yield return SkipTail;
         yield return Range;
         yield return Exclude;
+        yield return Chapters;
+        yield return SkipChapter;
         yield return MinGap;
         yield return NoRejectBlack;
         yield return NoRejectFrozen;

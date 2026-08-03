@@ -227,6 +227,45 @@ public class RoundTripTests
         (await _fixture.DurationOfAsync(paths[0])).ShouldBe(2.0, 0.2);
     }
 
+    [Fact]
+    public async Task ChapteredSource_LeavesNoChaptersInTheSegmentsOrTheOutput()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var probe = new FfprobeMediaProbe(_fixture.Runner, NullLogger<FfprobeMediaProbe>.Instance);
+        var info = await probe.ProbeAsync(_fixture.ChapteredClip, TestContext.Current.CancellationToken);
+        info.HasChapters.ShouldBeTrue("the fixture must actually carry chapters to be a regression test");
+
+        var (_, encoder) = await SetUpAsync();
+        var paths = await ExtractAsync(info, encoder, [(2.5, 1.5), (6.0, 1.5)]);
+
+        // FFmpeg copies chapters from the input by default and merely rebases them onto the cut,
+        // so an unfixed extractor writes the source's whole chapter list into a 1.5s segment.
+        foreach (var path in paths)
+        {
+            (await _fixture.ChapterCountOfAsync(path)).ShouldBe(0);
+        }
+
+        // Both stitchers must hold the guarantee: the filter graph copies chapters from its
+        // first input, and the concat demuxer is only clean by happenstance.
+        var graphOutput = _fixture.PathFor($"chap_graph_{Guid.NewGuid():N}.mp4");
+        await new FilterGraphStitcher(_fixture.Runner, NullLogger<FilterGraphStitcher>.Instance)
+            .StitchAsync(
+                Request(paths, graphOutput, [1.5, 1.5], TransitionKind.Fade, encoder, fade: 0),
+                null,
+                TestContext.Current.CancellationToken);
+
+        var concatOutput = _fixture.PathFor($"chap_concat_{Guid.NewGuid():N}.mp4");
+        await new ConcatDemuxerStitcher(_fixture.Runner, NullLogger<ConcatDemuxerStitcher>.Instance)
+            .StitchAsync(
+                Request(paths, concatOutput, [1.5, 1.5], TransitionKind.None, encoder, fade: 0),
+                null,
+                TestContext.Current.CancellationToken);
+
+        (await _fixture.ChapterCountOfAsync(graphOutput)).ShouldBe(0);
+        (await _fixture.ChapterCountOfAsync(concatOutput)).ShouldBe(0);
+    }
+
     private static StitchRequest Request(
         IReadOnlyList<string> paths,
         string output,

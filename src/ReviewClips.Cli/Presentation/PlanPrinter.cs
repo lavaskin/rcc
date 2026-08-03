@@ -1,3 +1,4 @@
+using ReviewClips.Core.Media;
 using ReviewClips.Core.Options;
 using ReviewClips.Core.Pipeline;
 using ReviewClips.Core.Primitives;
@@ -47,6 +48,13 @@ internal static class PlanPrinter
             $"{plan.DistinctSourceDuration.TotalSeconds:0.#}s of footage"
             + (distinct == slots ? string.Empty : $" (vs {plan.TotalDuration.TotalSeconds:0.#}s of screen time)"));
         table.AddRow("Strategy", $"{request.Selection.Strategy} (seed {plan.Seed})");
+
+        // Only worth a row when the sources actually carry markers.
+        if (DescribeChapters(plan) is { } chapters)
+        {
+            table.AddRow("Chapters", chapters);
+        }
+
         table.AddRow("Format", $"{request.Format.Width}x{request.Format.Height} @ {request.Format.FrameRate:0.##}fps, fit={request.Format.Fit}");
         table.AddRow("Look", DescribeLook(request.Look));
         table.AddRow("Transition", DescribeTransition(request.Transition));
@@ -123,6 +131,52 @@ internal static class PlanPrinter
                 console.WriteLine(command);
             }
         }
+    }
+
+    /// <summary>
+    /// Summarizes what chapter filtering did, or null when no source has chapters. Reports the
+    /// excluded titles by name: a silent exclusion of ten minutes of a film is exactly the kind
+    /// of thing that should not be invisible.
+    /// </summary>
+    private static string? DescribeChapters(RenderPlan plan)
+    {
+        var total = plan.Sources.Sum(s => s.Info.Chapters.Count);
+        if (total == 0)
+        {
+            return null;
+        }
+
+        var patterns = plan.Request.Selection.EffectiveChapterPatterns;
+
+        var skipped = plan.Sources
+            .SelectMany(s => ChapterFilter.Matching(s.Info.Chapters, patterns))
+            .ToList();
+
+        if (skipped.Count == 0)
+        {
+            return plan.Sources.Any(s => s.Info.HasNamedChapters)
+                ? $"{total} marker(s), none matched as intro or credits"
+                : $"{total} unnamed marker(s), nothing to match against";
+        }
+
+        var excluded = skipped.Aggregate(TimeSpan.Zero, (sum, c) => sum + c.Duration);
+
+        var titles = skipped
+            .Select(c => c.Title)
+            .OfType<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+
+        var named = string.Join(", ", titles);
+        if (skipped.Count > titles.Count)
+        {
+            named += ", ...";
+        }
+
+        return Markup.Escape(
+            $"{total} marker(s); skipped {skipped.Count} "
+            + $"({excluded.TotalSeconds:0.#}s): {named}");
     }
 
     private static string DescribeLook(LookOptions look)

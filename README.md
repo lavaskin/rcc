@@ -71,6 +71,9 @@ rcc generate -i movie.mkv -d 90s --dry-run
 
 # Build from specific timestamps
 rcc generate -i movie.mkv --cues notes.txt -d 2m -o bg.mp4
+
+# Let the source's own chapter markers exclude the titles and credits
+rcc generate -i movie.mkv -d 90s --skip-head 0 --skip-tail 0 -o bg.mp4
 ```
 
 The first run against a source analyses it and caches the result. Later runs against the same file
@@ -85,7 +88,7 @@ skip that step.
 | `generate` | Render one output file. |
 | `batch` | Render several variants from the same sources, using derived seeds. |
 | `scan` | Analyze sources and populate the cache without rendering. |
-| `probe` | Print resolution, frame rate, HDR status, and pixel aspect ratio. |
+| `probe` | Print resolution, frame rate, HDR status, pixel aspect ratio, and chapters. |
 | `profiles` | List available presets. |
 
 `rcc <command> --help` lists all options for that command.
@@ -95,6 +98,9 @@ uses a seed derived from the base seed, so the whole batch is reproducible from 
 
 `scan` accepts `--force` to re-analyze regardless of cache state, plus `--analysis-fps`,
 `--scene-threshold`, and `--hwdecode`.
+
+`probe` accepts `--chapters` to list a source's chapter markers and show which of them selection
+would skip.
 
 `probe` and `scan` take one or more paths as positional arguments rather than `-i`.
 
@@ -129,13 +135,67 @@ Durations accept `90`, `90s`, `2m`, `1m30s`, `1.5m`, `1h2m3s`, `1:30`, or `00:01
 | `--skip-tail <t\|%>` | `8%` | Ignored at the end of each source. |
 | `--range <a-b>` | none | Restrict sampling to this range. Repeatable. |
 | `--exclude <a-b>` | none | Exclude this range. Repeatable. |
+| `--chapters <mode>` | `auto` | `auto` skips chapters titled as openings, credits, or recaps. `off` disables it. |
+| `--skip-chapter <pat>` | none | Also skip chapters whose title matches. Repeatable. |
 | `--cues <file\|list>` | none | Timestamps to build from. Implies `--strategy cues`. |
 | `--no-reject-black` | off | Allow clips from stretches detected as black. |
 | `--no-reject-frozen` | off | Allow clips from static or frozen shots. |
 | `--no-shuffle` | off | Emit clips in chronological order. |
 
 `--skip-head` and `--skip-tail` accept a percentage or an absolute time. Percentages let one value
-apply to both a feature and a short trailer. The defaults skip opening titles and end credits.
+apply to both a feature and a short trailer. The defaults approximate opening titles and end
+credits; `--chapters` locates them exactly where the source says where they are.
+
+### Chapter markers
+
+Most MKV rips, and many MP4s, carry chapter markers. Where those chapters are named, they state
+exactly where the front and back matter is, which is strictly better than inferring it from a
+percentage of the runtime. Chapters whose title reads as an opening sequence, end credits, or
+recycled footage are excluded from sampling by default:
+
+```
+$ rcc probe --chapters movie.mkv
+
+  # │ Start │ Length │ Title             │ Default
+ ───┼───────┼────────┼───────────────────┼──────────
+  1 │ 00:00 │ 45s    │ Studio Logos      │ skipped
+  2 │ 00:45 │ 75s    │ Opening Titles    │ skipped
+  3 │ 02:00 │ 180s   │ Act One           │ eligible
+  4 │ 05:00 │ 220s   │ The Confrontation │ eligible
+  5 │ 08:40 │ 80s    │ End Credits       │ skipped
+```
+
+Matching is on titles only, never on position, so nothing is guessed. Two consequences follow:
+
+- A rip whose chapters are named `Chapter 01`, `Chapter 02`, ... carries no usable information.
+  Filtering degrades to a no-op and the `--skip-head` / `--skip-tail` trims remain the only defence.
+  `probe --chapters` says so explicitly when this is the case.
+- A named chapter is caught wherever it sits, not only at the ends. An episode whose opening theme
+  starts at 1:30 or whose next-episode preview sits before the credits is handled.
+
+Chapter exclusions are additive: they are subtracted alongside `--exclude` and the detected black
+and frozen stretches, and they do not replace the percentage trims. For a well-chaptered source the
+trims are then redundant, and dropping them recovers real footage:
+
+```bash
+rcc generate -i movie.mkv -d 90s --skip-head 0 --skip-tail 0
+```
+
+`--skip-chapter` adds patterns of your own. A pattern containing `*` or `?` is a glob matched
+against the whole title; anything else is a case-insensitive substring:
+
+```bash
+rcc generate -i ep01.mkv -d 90s --skip-chapter "cold open" --skip-chapter "stinger"
+rcc generate -i ep01.mkv -d 90s --chapters off --skip-chapter "ending*"
+```
+
+`--skip-chapter` is honoured whether or not `--chapters off` is set, so `off` disables the built-in
+titles while leaving explicit patterns in force. A `--skip-chapter` that matches nothing produces a
+warning rather than silently doing nothing.
+
+The plan summary reports which chapters were excluded and how much runtime that removed, so the
+exclusion is never invisible. `--strategy cues` is unaffected: explicit timestamps are taken as
+given, as with every other eligibility filter.
 
 ### Scored strategy tuning
 
@@ -380,12 +440,13 @@ output file is left behind.
 
 ## How it works
 
-1. **Probe** — `ffprobe` reports duration, dimensions, frame rate, pixel aspect ratio, and color
-   transfer characteristics for each source.
+1. **Probe** — `ffprobe` reports duration, dimensions, frame rate, pixel aspect ratio, color
+   transfer characteristics, and chapter markers for each source.
 2. **Analyse** — one FFmpeg pass, decimated to 4 fps and downscaled to 320px wide, produces scene
    cut timestamps, a per-frame motion curve, and the black and frozen ranges. Cached on disk.
 3. **Select** — clips are chosen by the active strategy from the eligible ranges, which exclude the
-   head/tail trims, any `--exclude` ranges, and detected black and frozen stretches.
+   head/tail trims, any `--exclude` ranges, chapters skipped by title, and detected black and
+   frozen stretches.
 4. **Extract** — clips are cut in parallel and normalized to identical geometry, frame rate, pixel
    format, GOP length, and timebase.
 5. **Stitch** — with no transitions or fades, the normalized clips are concatenated by stream copy.
@@ -516,6 +577,16 @@ and luma-only, so chroma is unaffected.
 degrades to "take the N highest scores" when spacing cannot be satisfied, and since scores are
 spatially correlated the result clusters into a few seconds of source. A non-overlap floor is
 enforced and never relaxed.
+
+**Chapter skipping matches titles, never positions.** "The last chapter is the credits" is true
+often enough to be tempting and wrong often enough to put a credit crawl in the output, so it is not
+inferred. Only a title that names the material triggers an exclusion, which means the feature does
+nothing at all on the many rips whose chapters are named `Chapter 01` onwards — an honest no-op is
+preferable to a heuristic that silently discards an act of the film. Titles that only restate the
+chapter number are recognised as such and never matched, so a pattern like `*1*` cannot catch them.
+Chapter ranges are subtracted unpadded, unlike detected black stretches, because a container states
+its boundaries exactly; clips still cannot bleed across one, since a candidate window must fit
+entirely inside a single eligible range.
 
 **Interruption uses `PosixSignalRegistration`, not `Console.CancelKeyPress`.** The latter handles
 only SIGINT and never sees SIGTERM, which is what `kill`, systemd, Docker, and CI send. Handlers

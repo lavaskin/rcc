@@ -29,6 +29,12 @@ public sealed record MediaInfo
 
     public required bool HasAudio { get; init; }
 
+    /// <summary>
+    /// Container chapter markers in file order, or empty when the source carries none.
+    /// Never <c>null</c>, so callers need not special-case unchaptered files.
+    /// </summary>
+    public IReadOnlyList<Chapter> Chapters { get; init; } = [];
+
     public string? ColorTransfer { get; init; }
 
     public string? ColorPrimaries { get; init; }
@@ -54,6 +60,15 @@ public sealed record MediaInfo
 
     public bool IsAnamorphic =>
         SampleAspectRatio.IsValid && SampleAspectRatio != Ratio.One;
+
+    public bool HasChapters => Chapters.Count > 0;
+
+    /// <summary>
+    /// True when at least one chapter is named something other than its own number. Chapters
+    /// that only say <c>Chapter 07</c> are present in most disc rips and cannot be matched
+    /// against, so "has chapters" alone is not enough to know whether they are of any use.
+    /// </summary>
+    public bool HasNamedChapters => Chapters.Any(c => c.MeaningfulTitle is not null);
 
     public TimeRange FullRange => new(TimeSpan.Zero, Duration);
 }

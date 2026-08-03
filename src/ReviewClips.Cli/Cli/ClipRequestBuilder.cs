@@ -69,6 +69,8 @@ internal sealed class ClipRequestBuilder
             SkipTail = parse.GetValue(_options.SkipTail) ?? request.Selection.SkipTail,
             IncludeRanges = Or(parse.GetValue(_options.Range), request.Selection.IncludeRanges),
             ExcludeRanges = Or(parse.GetValue(_options.Exclude), request.Selection.ExcludeRanges),
+            ChapterSkip = parse.GetValue(_options.Chapters) ?? request.Selection.ChapterSkip,
+            SkipChapterPatterns = Or(parse.GetValue(_options.SkipChapter), request.Selection.SkipChapterPatterns),
             MinGap = parse.GetValue(_options.MinGap) ?? request.Selection.MinGap,
             RejectBlack = !parse.GetValue(_options.NoRejectBlack) && request.Selection.RejectBlack,
             RejectFrozen = !parse.GetValue(_options.NoRejectFrozen) && request.Selection.RejectFrozen,

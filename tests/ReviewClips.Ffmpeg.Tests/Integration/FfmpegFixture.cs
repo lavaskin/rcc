@@ -31,6 +31,15 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// <summary>A 720x480 clip with SAR 32:27, i.e. a 16:9 anamorphic DVD.</summary>
     public string AnamorphicClip { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// A 20s MKV carrying four named chapters, standing in for a disc rip whose container
+    /// marks its opening titles and end credits.
+    /// </summary>
+    public string ChapteredClip { get; private set; } = string.Empty;
+
+    /// <summary>A 10s MKV whose chapters are named only by number, as most rips are.</summary>
+    public string UnnamedChapterClip { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         Directory = Path.Combine(Path.GetTempPath(), "rcc_tests_" + Guid.NewGuid().ToString("N")[..8]);
@@ -58,6 +67,24 @@ public sealed class FfmpegFixture : IAsyncLifetime
             ["-vf", "setsar=32/27"]);
 
         MultiShotClip = await BuildMultiShotAsync();
+
+        ChapteredClip = await BuildChapteredAsync(
+            "chaptered.mkv",
+            SimpleClip,
+            [
+                ("Opening Titles", 0, 2_000),
+                ("Act One", 2_000, 5_000),
+                ("Act Two", 5_000, 8_000),
+                ("End Credits", 8_000, 10_000),
+            ]);
+
+        UnnamedChapterClip = await BuildChapteredAsync(
+            "unnamed_chapters.mkv",
+            SimpleClip,
+            [
+                ("Chapter 01", 0, 5_000),
+                ("Chapter 02", 5_000, 10_000),
+            ]);
     }
 
     public ValueTask DisposeAsync()
@@ -106,6 +133,26 @@ public sealed class FfmpegFixture : IAsyncLifetime
             out var seconds)
             ? seconds
             : 0d;
+    }
+
+    /// <summary>
+    /// Counts the chapter markers a file carries. Rendered output must report zero: chapters
+    /// belong to the source's structure, and clips assembled from scattered moments have none.
+    /// </summary>
+    public async Task<int> ChapterCountOfAsync(string path)
+    {
+        var result = await Runner.RunFfprobeAsync(
+            [
+                "-v", "error",
+                "-show_chapters",
+                "-of", "csv=p=0",
+                path,
+            ],
+            CancellationToken.None);
+
+        return result.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Length;
     }
 
     /// <summary>
@@ -190,6 +237,53 @@ public sealed class FfmpegFixture : IAsyncLifetime
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Remuxes a clip with chapter markers attached via an ffmetadata sidecar, which is the only
+    /// way to author chapters with FFmpeg. Timings are in milliseconds.
+    /// </summary>
+    private async Task<string> BuildChapteredAsync(
+        string name,
+        string sourcePath,
+        IReadOnlyList<(string Title, int StartMs, int EndMs)> chapters)
+    {
+        var lines = new List<string> { ";FFMETADATA1" };
+
+        foreach (var (title, startMs, endMs) in chapters)
+        {
+            lines.AddRange(
+            [
+                "[CHAPTER]",
+                "TIMEBASE=1/1000",
+                $"START={startMs}",
+                $"END={endMs}",
+                $"title={title}",
+            ]);
+        }
+
+        var metadataPath = Path.Combine(Directory, name + ".ffmeta");
+        await File.WriteAllLinesAsync(metadataPath, lines);
+
+        var output = Path.Combine(Directory, name);
+        var result = await Runner.RunFfmpegAsync(
+            [
+                "-hide_banner", "-loglevel", "error", "-y",
+                "-i", sourcePath,
+                "-i", metadataPath,
+                "-map_metadata", "1",
+                "-map_chapters", "1",
+                "-c", "copy",
+                output,
+            ],
+            CancellationToken.None);
+
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"Could not build {name}: {result.StandardError}");
+        }
+
+        return output;
     }
 
     /// <summary>

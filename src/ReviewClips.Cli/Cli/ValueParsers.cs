@@ -137,6 +137,27 @@ internal static class ValueParsers
         };
 
     /// <summary>
+    /// Collects repeated free-text values. Not comma-split, because the values are matched
+    /// against chapter titles and a title may legitimately contain a comma.
+    /// </summary>
+    public static Option<List<string>> TextListOption(
+        string name,
+        string description,
+        string helpName,
+        params string[] aliases) =>
+        new(name, aliases)
+        {
+            Description = description,
+            HelpName = helpName,
+            AllowMultipleArgumentsPerToken = true,
+            Arity = ArgumentArity.ZeroOrMore,
+            CustomParser = result => result.Tokens
+                .Select(t => t.Value.Trim())
+                .Where(v => v.Length > 0)
+                .ToList(),
+        };
+
+    /// <summary>
     /// Parses cues from either a comma-separated list or a file, one per line.
     /// Blank lines, <c>#</c> comments and trailing labels are ignored, so a working
     /// notes file can be used directly.

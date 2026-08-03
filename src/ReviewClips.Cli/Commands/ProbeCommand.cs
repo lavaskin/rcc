@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
+using ReviewClips.Core.Media;
 using ReviewClips.Core.Pipeline;
 using ReviewClips.Core.Primitives;
 using ReviewClips.Core.Sources;
@@ -16,10 +17,16 @@ internal sealed class ProbeCommand
         Arity = ArgumentArity.OneOrMore,
     };
 
+    private readonly Option<bool> _chapters = new("--chapters")
+    {
+        Description = "List chapter markers, flagging the ones selection would skip by default.",
+    };
+
     public Command Build(IServiceProvider services)
     {
         var command = new Command("probe", "Show technical details of one or more sources.");
         command.Add(_inputs);
+        command.Add(_chapters);
         command.SetAction((parse, ct) => ExecuteAsync(services, parse, ct));
         return command;
     }
@@ -34,6 +41,8 @@ internal sealed class ProbeCommand
         var resolver = services.GetRequiredService<SourceResolver>();
 
         var sources = resolver.Resolve(parse.GetValue(_inputs) ?? []);
+        var listChapters = parse.GetValue(_chapters);
+        var probed = new List<MediaInfo>(sources.Count);
 
         var table = new Table()
             .Border(TableBorder.Rounded)
@@ -50,6 +59,7 @@ internal sealed class ProbeCommand
         {
             cancellationToken.ThrowIfCancellationRequested();
             var info = await probe.ProbeAsync(source, cancellationToken);
+            probed.Add(info);
 
             var notes = new List<string>();
             if (info.IsHdr)
@@ -69,6 +79,13 @@ internal sealed class ProbeCommand
 
             notes.Add(info.HasAudio ? "audio" : "[grey]no audio[/]");
 
+            if (info.HasChapters)
+            {
+                notes.Add(info.HasNamedChapters
+                    ? $"{info.Chapters.Count} chapters"
+                    : $"[grey]{info.Chapters.Count} unnamed chapters[/]");
+            }
+
             table.AddRow(
                 Markup.Escape(Path.GetFileName(info.Path)),
                 DurationSpec.Format(info.Duration),
@@ -80,6 +97,72 @@ internal sealed class ProbeCommand
         }
 
         console.Write(table);
+
+        if (listChapters)
+        {
+            foreach (var info in probed)
+            {
+                PrintChapters(console, info);
+            }
+        }
+        else if (probed.Exists(i => i.HasNamedChapters))
+        {
+            console.MarkupLine(
+                "[grey]Named chapters found. Use 'probe --chapters' to see which ones selection skips.[/]");
+        }
+
         return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Lists a source's chapters and marks the ones the default title patterns exclude, so a
+    /// user can see what will be skipped before rendering and write their own patterns.
+    /// </summary>
+    private static void PrintChapters(IAnsiConsole console, MediaInfo info)
+    {
+        console.MarkupLine($"[bold]{Markup.Escape(Path.GetFileName(info.Path))}[/] chapters");
+
+        if (!info.HasChapters)
+        {
+            console.MarkupLine("[grey]  none[/]");
+            return;
+        }
+
+        var skipped = ChapterFilter
+            .Matching(info.Chapters, ChapterFilter.IntroOutroPatterns)
+            .Select(c => c.Index)
+            .ToHashSet();
+
+        var table = new Table()
+            .Border(TableBorder.Minimal)
+            .BorderColor(Color.Grey)
+            .AddColumn("[grey]#[/]")
+            .AddColumn("[grey]Start[/]")
+            .AddColumn("[grey]Length[/]")
+            .AddColumn("[grey]Title[/]")
+            .AddColumn("[grey]Default[/]");
+
+        foreach (var chapter in info.Chapters)
+        {
+            var isSkipped = skipped.Contains(chapter.Index);
+
+            table.AddRow(
+                (chapter.Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                DurationSpec.Format(chapter.Start),
+                $"{chapter.Duration.TotalSeconds:0.#}s",
+                chapter.Title is null
+                    ? "[grey](untitled)[/]"
+                    : Markup.Escape(chapter.Title),
+                isSkipped ? "[yellow]skipped[/]" : "[grey]eligible[/]");
+        }
+
+        console.Write(table);
+
+        if (skipped.Count == 0 && !info.HasNamedChapters)
+        {
+            console.MarkupLine(
+                "[grey]  Titles are auto-generated, so chapter filtering cannot help here; "
+                + "rely on --skip-head/--skip-tail or --exclude.[/]");
+        }
     }
 }

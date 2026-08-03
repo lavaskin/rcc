@@ -32,8 +32,20 @@ public sealed record SelectionContext
         SegmentDurations.Count == 0 ? TimeSpan.Zero : SegmentDurations.Max();
 
     /// <summary>
+    /// The chapters of a source that the current options exclude, in file order. Empty when the
+    /// source has no chapters, none are named, or no pattern matches.
+    /// </summary>
+    public IReadOnlyList<Media.Chapter> SkippedChapters(SourceMedia source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        return Media.ChapterFilter.Matching(source.Info.Chapters, Options.EffectiveChapterPatterns);
+    }
+
+    /// <summary>
     /// Computes the ranges of a source that are legal to sample from: inside the skip-head/tail
-    /// window, inside any explicit includes, and outside excludes plus black/frozen stretches.
+    /// window, inside any explicit includes, and outside excludes, skipped chapters, and
+    /// black/frozen stretches.
     /// </summary>
     public TimeRangeSet EligibleRanges(SourceMedia source, TimeSpan windowLength)
     {
@@ -65,6 +77,15 @@ public sealed record SelectionContext
         if (Options.ExcludeRanges.Count > 0)
         {
             eligible = eligible.Subtract(Options.ExcludeRanges);
+        }
+
+        // Chapter bounds are stated by the container rather than inferred, so they are subtracted
+        // un-padded. A clip still cannot bleed into one, because selectors require a candidate
+        // window to fit entirely inside a single eligible range.
+        var skippedChapters = SkippedChapters(source);
+        if (skippedChapters.Count > 0)
+        {
+            eligible = eligible.Subtract(skippedChapters.Select(c => c.Range));
         }
 
         if (source.Analysis is { } analysis)

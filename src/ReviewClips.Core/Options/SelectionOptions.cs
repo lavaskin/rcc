@@ -20,6 +20,18 @@ public enum SelectionStrategy
     Cues,
 }
 
+public enum ChapterSkipMode
+{
+    /// <summary>
+    /// Skip chapters whose title reads as an opening sequence, end credits, or recycled
+    /// footage. See <see cref="Media.ChapterFilter.IntroOutroPatterns"/>.
+    /// </summary>
+    Auto,
+
+    /// <summary>Consult no built-in titles. Explicit patterns still apply.</summary>
+    Off,
+}
+
 public enum SegmentOrder
 {
     /// <summary>Segments appear in the order they occur in the source.</summary>
@@ -74,6 +86,20 @@ public sealed record SelectionOptions
     /// <summary>Always excluded.</summary>
     public IReadOnlyList<TimeRange> ExcludeRanges { get; init; } = [];
 
+    /// <summary>
+    /// Whether the built-in intro and credits chapter titles are skipped. On by default: where a
+    /// source names its chapters, they locate that material exactly, which is what
+    /// <see cref="SkipHead"/> and <see cref="SkipTail"/> can only approximate.
+    /// </summary>
+    public ChapterSkipMode ChapterSkip { get; init; } = ChapterSkipMode.Auto;
+
+    /// <summary>
+    /// Extra chapter title patterns to skip, always honoured regardless of
+    /// <see cref="ChapterSkip"/>. Matched as case-insensitive substrings, or as globs when the
+    /// pattern contains <c>*</c> or <c>?</c>.
+    /// </summary>
+    public IReadOnlyList<string> SkipChapterPatterns { get; init; } = [];
+
     /// <summary>Minimum spacing between the starts of two chosen segments, so clips don't come from the same moment.</summary>
     public TimeSpan MinGap { get; init; } = TimeSpan.FromSeconds(20);
 
@@ -106,6 +132,15 @@ public sealed record SelectionOptions
     /// and reads worse as background footage.
     /// </summary>
     public SegmentOrder Order { get; init; } = SegmentOrder.Shuffled;
+
+    /// <summary>
+    /// Every chapter title pattern in force: the built-in set unless disabled, plus whatever the
+    /// user supplied. Computed here so selection and the plan report cannot disagree.
+    /// </summary>
+    public IReadOnlyList<string> EffectiveChapterPatterns =>
+        ChapterSkip == ChapterSkipMode.Auto
+            ? [.. Media.ChapterFilter.IntroOutroPatterns, .. SkipChapterPatterns]
+            : SkipChapterPatterns;
 
     /// <summary>True when the chosen strategy needs a (potentially slow) analysis pass.</summary>
     public bool RequiresAnalysis =>

@@ -70,6 +70,11 @@ public sealed class FilterGraphStitcher : IStitcher
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", $"[{StitchPlan.VideoOutputLabel}]"]);
 
+        // Without this FFmpeg copies chapters from the first input, so the finished file would
+        // inherit whatever markers segment one happened to carry. The extractor already strips
+        // them; this makes the guarantee hold for the output regardless of the inputs.
+        arguments.AddRange(["-map_chapters", "-1"]);
+
         if (includeAudio)
         {
             arguments.AddRange(["-map", $"[{StitchPlan.AudioOutputLabel}]"]);
