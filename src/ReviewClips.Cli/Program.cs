@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using ReviewClips.Cli;
 using ReviewClips.Cli.Cli;
 using ReviewClips.Cli.Commands;
+using ReviewClips.Cli.Presentation;
 using ReviewClips.Core.Pipeline;
 using ReviewClips.Core.Sources;
 using ReviewClips.Ffmpeg.Process;
@@ -113,7 +114,7 @@ catch (Exception ex)
     }
     else
     {
-        AnsiConsole.MarkupLine("[grey]run again with --verbose for a stack trace[/]");
+        AnsiConsole.MarkupLine(Styles.Faint("run again with --verbose for a stack trace"));
     }
 
     return ExitCodes.UnexpectedError;

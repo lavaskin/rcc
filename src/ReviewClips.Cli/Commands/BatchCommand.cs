@@ -83,7 +83,7 @@ internal sealed class BatchCommand
                 Selection = template.Selection with { Seed = seed },
             };
 
-            console.MarkupLine($"[bold]variant {i + 1}/{count}[/] [grey]seed {seed}[/]");
+            console.MarkupLine($"[bold]variant {i + 1}/{count}[/] {Styles.Faint($"seed {seed}")}");
 
             var observer = new ConsoleRenderObserver(console);
             var plan = await pipeline.PlanAsync(request, observer, cancellationToken);
@@ -104,7 +104,8 @@ internal sealed class BatchCommand
 
             console.MarkupLine(
                 $"  [green]done[/] {Markup.Escape(Path.GetFileName(result.OutputPath))} "
-                + $"[grey]({GenerateCommand.FormatSize(result.OutputSizeBytes)}, {result.Elapsed.TotalSeconds:0.#}s)[/]");
+                + Styles.Faint(
+                    $"({GenerateCommand.FormatSize(result.OutputSizeBytes)}, {result.Elapsed.TotalSeconds:0.#}s)"));
         }
 
         return ExitCodes.Success;

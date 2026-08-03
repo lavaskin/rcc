@@ -54,7 +54,7 @@ internal sealed class GenerateCommand
             if (request.ManifestPath is { } manifestPath)
             {
                 await RenderManifest.From(plan, null).WriteAsync(manifestPath, cancellationToken);
-                console.MarkupLine($"[grey]manifest ->[/] {Markup.Escape(manifestPath)}");
+                console.MarkupLine($"{Styles.Faint("manifest ->")} {Markup.Escape(manifestPath)}");
             }
 
             console.MarkupLine("[yellow]dry run: nothing was rendered.[/]");
@@ -66,12 +66,12 @@ internal sealed class GenerateCommand
         if (request.ManifestPath is { } path)
         {
             await RenderManifest.From(plan, result).WriteAsync(path, cancellationToken);
-            console.MarkupLine($"[grey]manifest ->[/] {Markup.Escape(path)}");
+            console.MarkupLine($"{Styles.Faint("manifest ->")} {Markup.Escape(path)}");
         }
 
         console.MarkupLine(
             $"[green]done[/] {Markup.Escape(result.OutputPath)} "
-            + $"[grey]({FormatSize(result.OutputSizeBytes)}, {result.Elapsed.TotalSeconds:0.#}s)[/]");
+            + Styles.Faint($"({FormatSize(result.OutputSizeBytes)}, {result.Elapsed.TotalSeconds:0.#}s)"));
 
         return ExitCodes.Success;
     }

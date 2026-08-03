@@ -47,7 +47,7 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
             _ => phase.ToString(),
         };
 
-        _console.MarkupLine($"[grey]>[/] [bold]{label}[/] [grey]{Escape(detail)}[/]");
+        _console.MarkupLine($"[bold]> {label}[/] {Styles.Faint(Escape(detail))}");
     }
 
     public void OnProbed(string path, int completed, int total)
@@ -69,7 +69,8 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
         }
         else
         {
-            _console.MarkupLine($"  [yellow]scanning[/] {name} [grey](slow once, cached afterwards)[/]");
+            _console.MarkupLine(
+                $"  [yellow]scanning[/] {name} {Styles.Faint("(slow once, cached afterwards)")}");
         }
     }
 
@@ -97,7 +98,10 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
             }
 
             _lastPercent = bucket;
-            _console.Markup($"[grey]{bucket}%[/] ");
+
+            // Left at the default foreground: this is the only feedback during a scan that can
+            // run for minutes, so it must be readable whatever the terminal theme.
+            _console.Write($"{bucket}% ");
 
             if (bucket >= 100)
             {
@@ -126,8 +130,9 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
 
         lock (_gate)
         {
-            // Overwrite a single line rather than scrolling one line per segment.
-            _console.Markup($"\r  [grey]{completed}/{total} encoded[/]");
+            // Overwrite a single line rather than scrolling one line per segment. The counter
+            // stays at the default foreground so it is legible on any terminal theme.
+            _console.Write($"\r  {completed}/{total} encoded");
 
             if (completed == total)
             {

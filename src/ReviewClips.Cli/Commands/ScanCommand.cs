@@ -83,14 +83,14 @@ internal sealed class ScanCommand
 
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .BorderColor(Color.Grey)
-            .AddColumn("[grey]File[/]")
-            .AddColumn("[grey]Cuts[/]")
-            .AddColumn("[grey]Avg shot[/]")
-            .AddColumn("[grey]Black[/]")
-            .AddColumn("[grey]Frozen[/]")
-            .AddColumn("[grey]Median motion[/]")
-            .AddColumn("[grey]Source[/]");
+            .BorderStyle(Styles.Border)
+            .AddColumn(Styles.Header("File"))
+            .AddColumn(Styles.Header("Cuts"))
+            .AddColumn(Styles.Header("Avg shot"))
+            .AddColumn(Styles.Header("Black"))
+            .AddColumn(Styles.Header("Frozen"))
+            .AddColumn(Styles.Header("Median motion"))
+            .AddColumn(Styles.Header("Source"));
 
         foreach (var source in sources)
         {
@@ -131,7 +131,7 @@ internal sealed class ScanCommand
 
         console.Write(table);
         console.MarkupLine(
-            $"[grey]cache dir:[/] {Markup.Escape(Presentation.CachePaths.Describe(services))}");
+            $"{Styles.Faint("cache dir:")} {Markup.Escape(CachePaths.Describe(services))}");
 
         return ExitCodes.Success;
     }
@@ -140,7 +140,7 @@ internal sealed class ScanCommand
     {
         if (ranges.Count == 0)
         {
-            return "[grey]none[/]";
+            return Styles.Faint("none");
         }
 
         var total = ranges.Aggregate(TimeSpan.Zero, (a, r) => a + r.Duration);

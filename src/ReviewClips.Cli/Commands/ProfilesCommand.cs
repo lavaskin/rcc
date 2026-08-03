@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
+using ReviewClips.Cli.Presentation;
 using ReviewClips.Cli.Profiles;
 using Spectre.Console;
 
@@ -18,10 +19,10 @@ internal sealed class ProfilesCommand
 
             var table = new Table()
                 .Border(TableBorder.Rounded)
-                .BorderColor(Color.Grey)
-                .AddColumn("[grey]Profile[/]")
-                .AddColumn("[grey]Description[/]")
-                .AddColumn("[grey]Sets[/]");
+                .BorderStyle(Styles.Border)
+                .AddColumn(Styles.Header("Profile"))
+                .AddColumn(Styles.Header("Description"))
+                .AddColumn(Styles.Header("Sets"));
 
             foreach (var profile in library.All)
             {
@@ -32,7 +33,8 @@ internal sealed class ProfilesCommand
             }
 
             console.Write(table);
-            console.MarkupLine("[grey]Use with:[/] rcc generate -i movie.mkv -d 90s --profile shorts");
+            console.MarkupLine(
+                $"{Styles.Faint("Use with:")} rcc generate -i movie.mkv -d 90s --profile shorts");
             return ExitCodes.Success;
         });
 

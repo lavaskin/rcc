@@ -18,9 +18,9 @@ internal static class PlanPrinter
 
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .BorderColor(Color.Grey)
-            .AddColumn("[grey]Setting[/]")
-            .AddColumn("[grey]Value[/]");
+            .BorderStyle(Styles.Border)
+            .AddColumn(Styles.Header("Setting"))
+            .AddColumn(Styles.Header("Value"));
 
         table.AddRow("Sources", $"{plan.Sources.Count} file(s)");
         table.AddRow("Output", Markup.Escape(request.OutputPath));
@@ -78,13 +78,13 @@ internal static class PlanPrinter
 
         var table = new Table()
             .Border(TableBorder.Minimal)
-            .BorderColor(Color.Grey)
-            .AddColumn("[grey]#[/]")
-            .AddColumn("[grey]Source[/]")
-            .AddColumn("[grey]Start[/]")
-            .AddColumn("[grey]Length[/]")
-            .AddColumn("[grey]Score[/]")
-            .AddColumn("[grey]Why[/]");
+            .BorderStyle(Styles.Border)
+            .AddColumn(Styles.Header("#"))
+            .AddColumn(Styles.Header("Source"))
+            .AddColumn(Styles.Header("Start"))
+            .AddColumn(Styles.Header("Length"))
+            .AddColumn(Styles.Header("Score"))
+            .AddColumn(Styles.Header("Why"));
 
         var shown = Math.Min(plan.Segments.Count, limit);
         for (var i = 0; i < shown; i++)
@@ -103,7 +103,7 @@ internal static class PlanPrinter
 
         if (plan.Segments.Count > shown)
         {
-            console.MarkupLine($"[grey]... and {plan.Segments.Count - shown} more[/]");
+            console.MarkupLine(Styles.Faint($"... and {plan.Segments.Count - shown} more"));
         }
     }
 
@@ -118,10 +118,11 @@ internal static class PlanPrinter
         // stitch command, which is the interesting one.
         if (commands.Count > 2)
         {
-            console.MarkupLine($"[grey]# segment 1 of {commands.Count - 1}[/]");
+            console.MarkupLine(Styles.Faint($"# segment 1 of {commands.Count - 1}"));
             console.WriteLine(commands[0]);
-            console.MarkupLine($"[grey]# ... {commands.Count - 2} further segment commands, identical but for -ss[/]");
-            console.MarkupLine("[grey]# stitch[/]");
+            console.MarkupLine(Styles.Faint(
+                $"# ... {commands.Count - 2} further segment commands, identical but for -ss"));
+            console.MarkupLine(Styles.Faint("# stitch"));
             console.WriteLine(commands[^1]);
         }
         else

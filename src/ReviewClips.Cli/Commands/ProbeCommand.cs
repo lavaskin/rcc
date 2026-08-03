@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
+using ReviewClips.Cli.Presentation;
 using ReviewClips.Core.Media;
 using ReviewClips.Core.Pipeline;
 using ReviewClips.Core.Primitives;
@@ -46,14 +47,14 @@ internal sealed class ProbeCommand
 
         var table = new Table()
             .Border(TableBorder.Rounded)
-            .BorderColor(Color.Grey)
-            .AddColumn("[grey]File[/]")
-            .AddColumn("[grey]Duration[/]")
-            .AddColumn("[grey]Resolution[/]")
-            .AddColumn("[grey]FPS[/]")
-            .AddColumn("[grey]Codec[/]")
-            .AddColumn("[grey]Pixel fmt[/]")
-            .AddColumn("[grey]Notes[/]");
+            .BorderStyle(Styles.Border)
+            .AddColumn(Styles.Header("File"))
+            .AddColumn(Styles.Header("Duration"))
+            .AddColumn(Styles.Header("Resolution"))
+            .AddColumn(Styles.Header("FPS"))
+            .AddColumn(Styles.Header("Codec"))
+            .AddColumn(Styles.Header("Pixel fmt"))
+            .AddColumn(Styles.Header("Notes"));
 
         foreach (var source in sources)
         {
@@ -77,13 +78,13 @@ internal sealed class ProbeCommand
                 notes.Add("10-bit+");
             }
 
-            notes.Add(info.HasAudio ? "audio" : "[grey]no audio[/]");
+            notes.Add(info.HasAudio ? "audio" : Styles.Faint("no audio"));
 
             if (info.HasChapters)
             {
                 notes.Add(info.HasNamedChapters
                     ? $"{info.Chapters.Count} chapters"
-                    : $"[grey]{info.Chapters.Count} unnamed chapters[/]");
+                    : Styles.Faint($"{info.Chapters.Count} unnamed chapters"));
             }
 
             table.AddRow(
@@ -107,8 +108,8 @@ internal sealed class ProbeCommand
         }
         else if (probed.Exists(i => i.HasNamedChapters))
         {
-            console.MarkupLine(
-                "[grey]Named chapters found. Use 'probe --chapters' to see which ones selection skips.[/]");
+            console.MarkupLine(Styles.Faint(
+                "Named chapters found. Use 'probe --chapters' to see which ones selection skips."));
         }
 
         return ExitCodes.Success;
@@ -124,7 +125,7 @@ internal sealed class ProbeCommand
 
         if (!info.HasChapters)
         {
-            console.MarkupLine("[grey]  none[/]");
+            console.MarkupLine(Styles.Faint("  none"));
             return;
         }
 
@@ -135,12 +136,12 @@ internal sealed class ProbeCommand
 
         var table = new Table()
             .Border(TableBorder.Minimal)
-            .BorderColor(Color.Grey)
-            .AddColumn("[grey]#[/]")
-            .AddColumn("[grey]Start[/]")
-            .AddColumn("[grey]Length[/]")
-            .AddColumn("[grey]Title[/]")
-            .AddColumn("[grey]Default[/]");
+            .BorderStyle(Styles.Border)
+            .AddColumn(Styles.Header("#"))
+            .AddColumn(Styles.Header("Start"))
+            .AddColumn(Styles.Header("Length"))
+            .AddColumn(Styles.Header("Title"))
+            .AddColumn(Styles.Header("Default"));
 
         foreach (var chapter in info.Chapters)
         {
@@ -151,18 +152,18 @@ internal sealed class ProbeCommand
                 DurationSpec.Format(chapter.Start),
                 $"{chapter.Duration.TotalSeconds:0.#}s",
                 chapter.Title is null
-                    ? "[grey](untitled)[/]"
+                    ? Styles.Faint("(untitled)")
                     : Markup.Escape(chapter.Title),
-                isSkipped ? "[yellow]skipped[/]" : "[grey]eligible[/]");
+                isSkipped ? "[yellow]skipped[/]" : Styles.Faint("eligible"));
         }
 
         console.Write(table);
 
         if (skipped.Count == 0 && !info.HasNamedChapters)
         {
-            console.MarkupLine(
-                "[grey]  Titles are auto-generated, so chapter filtering cannot help here; "
-                + "rely on --skip-head/--skip-tail or --exclude.[/]");
+            console.MarkupLine(Styles.Faint(
+                "  Titles are auto-generated, so chapter filtering cannot help here; "
+                + "rely on --skip-head/--skip-tail or --exclude."));
         }
     }
 }
