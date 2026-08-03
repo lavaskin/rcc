@@ -29,11 +29,17 @@ internal static class PlanPrinter
         var distinct = plan.DistinctClipCount;
         var slots = plan.Segments.Count;
 
+        // Report the actual average clip length rather than the configured splice length:
+        // cue-driven renders share the runtime between cues, so the two can differ a lot.
+        var averageClip = plan.Segments.Count == 0
+            ? 0d
+            : plan.Segments.Average(seg => seg.Duration.TotalSeconds);
+
         table.AddRow(
             "Clips",
             distinct == slots
-                ? $"{slots} x ~{request.SpliceLength.TotalSeconds:0.#}s"
-                : $"{distinct} distinct x ~{request.SpliceLength.TotalSeconds:0.#}s, "
+                ? $"{slots} x ~{averageClip:0.#}s"
+                : $"{distinct} distinct x ~{averageClip:0.#}s, "
                   + $"repeated to fill {slots} slots ({plan.RepeatFactor:0.#}x)");
 
         table.AddRow(

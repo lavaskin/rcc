@@ -137,11 +137,30 @@ public sealed class RenderPipeline
             ? Math.Max(1, cap)
             : durations.Count;
 
-        var materialTotal = durations.Aggregate(TimeSpan.Zero, (a, b) => a + b);
-
         if (distinctWanted < durations.Count)
         {
-            context = context with { SegmentDurations = durations.Take(distinctWanted).ToList() };
+            if (request.Selection.Strategy == SelectionStrategy.Cues)
+            {
+                // Cues already define the pool, so the cap only limits how many of them are
+                // used. Each cue gets a full splice-length clip rather than a share of the
+                // runtime, because the runtime is filled by repetition instead.
+                var used = Math.Min(request.Selection.Cues.Count, distinctWanted);
+
+                context = context with
+                {
+                    Options = request.Selection with
+                    {
+                        Cues = request.Selection.Cues.Take(used).ToList(),
+                    },
+                    SegmentDurations = Enumerable
+                        .Repeat(request.SpliceLength, Math.Max(used, 1))
+                        .ToList(),
+                };
+            }
+            else
+            {
+                context = context with { SegmentDurations = durations.Take(distinctWanted).ToList() };
+            }
         }
 
         var segments = selector.SelectSegments(context);
@@ -151,31 +170,11 @@ public sealed class RenderPipeline
             throw new RenderPlanningException(BuildNoSegmentsMessage(request, sources));
         }
 
-        if (distinctWanted < durations.Count)
-        {
-            var pool = segments;
-            segments = ClipSequencer.Fill(pool, materialTotal, random);
-
-            if (segments.Count == 0)
-            {
-                throw new RenderPlanningException(
-                    "Could not build a sequence from the selected clips.");
-            }
-
-            var factor = (double)segments.Count / pool.Count;
-            if (factor >= 4d)
-            {
-                warnings.Add(
-                    $"Each of the {pool.Count} clips repeats about {factor:0.#} times to fill "
-                    + $"{request.TargetDuration.TotalSeconds:0.#}s. Raise --max-clips or shorten "
-                    + "--duration if the repetition becomes noticeable.");
-            }
-        }
-
         // Cue-driven renders legitimately produce one segment per cue, so report against that
         // rather than against the splice-derived count.
+        // For cues the expectation is one clip per cue, capped by --max-clips when set.
         var requestedCount = request.Selection.Strategy == SelectionStrategy.Cues
-            ? request.Selection.Cues.Count
+            ? Math.Min(request.Selection.Cues.Count, distinctWanted)
             : distinctWanted;
 
         observer.OnSegmentsSelected(segments.Count, requestedCount);
@@ -189,7 +188,33 @@ public sealed class RenderPipeline
                 + "Try lowering --min-gap, widening --skip-head/--skip-tail, or adding more sources.");
         }
 
-        // 5. Resolve the encoder.
+        // 5. Repeat the pool to fill the runtime when the distinct count is capped.
+        if (distinctWanted < durations.Count)
+        {
+            var pool = segments;
+
+            segments = ClipSequencer.FillForOutput(
+                pool,
+                request.TargetDuration,
+                request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero,
+                seed);
+
+            if (segments.Count == 0)
+            {
+                throw new RenderPlanningException("Could not build a sequence from the selected clips.");
+            }
+
+            var factor = (double)segments.Count / pool.Count;
+            if (factor >= 4d)
+            {
+                warnings.Add(
+                    $"Each of the {pool.Count} clips appears about {factor:0.#} times to fill "
+                    + $"{request.TargetDuration.TotalSeconds:0.#}s. Raise --max-clips or shorten "
+                    + "--duration if the repetition becomes noticeable.");
+            }
+        }
+
+        // 6. Resolve the encoder.
         var encoder = await _encoderSelector.SelectAsync(request.Encoder, cancellationToken);
         if (request.Encoder.Preference == EncoderPreference.Auto && !encoder.IsHardware)
         {

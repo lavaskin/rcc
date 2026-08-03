@@ -1,3 +1,4 @@
+using ReviewClips.Core.Primitives;
 using ReviewClips.Core.Selection;
 
 namespace ReviewClips.Core.Planning;
@@ -14,6 +15,67 @@ namespace ReviewClips.Core.Planning;
 /// </summary>
 public static class ClipSequencer
 {
+    /// <summary>
+    /// Repeats <paramref name="pool"/> so the <em>finished render</em> lasts
+    /// <paramref name="outputTarget"/>, compensating for transition overlap.
+    /// <para>
+    /// Solved by fixed-point iteration for the same reason as
+    /// <see cref="SplicePlanner.PlanForOutput"/>: the number of slots determines how much
+    /// material the transitions consume, and the amount of material determines the number of
+    /// slots. A fresh RNG per pass keeps the sequence deterministic so the loop cannot
+    /// oscillate on shuffle noise.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<Segment> FillForOutput(
+        IReadOnlyList<Segment> pool,
+        TimeSpan outputTarget,
+        TimeSpan transition,
+        int seed)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+
+        if (pool.Count == 0 || outputTarget <= TimeSpan.Zero)
+        {
+            return [];
+        }
+
+        var material = outputTarget;
+        var best = Fill(pool, material, new Random(seed));
+
+        for (var iteration = 0; iteration < 12; iteration++)
+        {
+            var sequence = Fill(pool, material, new Random(seed));
+            if (sequence.Count == 0)
+            {
+                return best;
+            }
+
+            best = sequence;
+
+            var effective = SplicePlanner.EffectiveTransition(
+                sequence.Select(s => s.Duration).ToList(),
+                transition);
+
+            var predicted = sequence.Aggregate(TimeSpan.Zero, (a, s) => a + s.Duration)
+                - (effective * (sequence.Count - 1));
+
+            var error = outputTarget - predicted;
+            if (Math.Abs(error.TotalSeconds) < 0.05d)
+            {
+                break;
+            }
+
+            material += error;
+
+            if (material <= TimeSpan.Zero)
+            {
+                break;
+            }
+        }
+
+        return best;
+    }
+
     /// <summary>
     /// Repeats <paramref name="distinct"/> until the durations sum to <paramref name="materialTotal"/>.
     /// <para>
@@ -95,27 +157,40 @@ public static class ClipSequencer
     }
 
     /// <summary>
-    /// Counts distinct clips in a sequence, treating identical source and timing as the same clip.
+    /// Counts distinct positions in the source, which is the pool size that <c>--max-clips</c>
+    /// controls. Two entries starting at the same timestamp are the same clip even if one was
+    /// trimmed shorter to land on the target duration.
     /// </summary>
     public static int CountDistinct(IEnumerable<Segment> segments)
     {
         ArgumentNullException.ThrowIfNull(segments);
 
         return segments
-            .Select(s => (s.SourcePath, s.Start, s.Duration))
+            .Select(s => (s.SourcePath, s.Start))
             .Distinct()
             .Count();
     }
 
-    /// <summary>Total unique source footage referenced, ignoring repeats.</summary>
+    /// <summary>
+    /// How much of the source material was actually used.
+    /// <para>
+    /// Computed as the union of the referenced time ranges, not the sum of clip lengths, so
+    /// repeats and any overlap between clips are each counted once. This is the number that
+    /// answers "how much of this film is in my video".
+    /// </para>
+    /// </summary>
     public static TimeSpan DistinctSourceDuration(IEnumerable<Segment> segments)
     {
         ArgumentNullException.ThrowIfNull(segments);
 
-        return segments
-            .Select(s => (s.SourcePath, s.Start, s.Duration))
-            .Distinct()
-            .Aggregate(TimeSpan.Zero, (total, s) => total + s.Duration);
+        var total = TimeSpan.Zero;
+
+        foreach (var bySource in segments.GroupBy(s => s.SourcePath, StringComparer.Ordinal))
+        {
+            total += TimeRangeSet.From(bySource.Select(s => s.Range)).TotalDuration;
+        }
+
+        return total;
     }
 
     private static bool IsSameClip(Segment a, Segment b) =>
