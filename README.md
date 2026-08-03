@@ -1,4 +1,4 @@
-# reviewclips (`rcc`)
+# Review Clips Creator (`rcc`)
 
 A CLI that builds background footage by cutting short clips out of one or more video sources and
 joining them into a render of a specified length.
@@ -13,8 +13,8 @@ rcc generate -i movie.mkv -d 90s -o background.mp4
 Sources can be a file, a directory, or a glob, and are handled identically — a feature film, a
 folder of trailers, stock footage, and public-domain material all work through the same pipeline.
 
-See [Copyright and sourcing](#copyright-and-sourcing) for constraints on using material you do not
-own.
+Using material you do not own carries constraints worth understanding before you start — see
+[LEGAL.md](LEGAL.md).
 
 ## Contents
 
@@ -275,6 +275,8 @@ viewer is watching directly.
 With `--cues`, the cap limits how many cues are used and each cue produces a full
 `--splice`-length clip.
 
+Bounding source usage is also relevant to fair use; see [LEGAL.md](LEGAL.md).
+
 ---
 
 ## Profiles
@@ -314,9 +316,9 @@ Each cue produces one clip. Clips appear in the order listed, and `--duration` i
 between them unless `--max-clips` is set. Cues within 3 seconds of a detected cut snap back to
 that cut so clips start on a shot boundary.
 
-Use this mode when the footage should correspond to specific points in the audio. It is also the
-mode with the strongest fair-use position, since the footage illustrates the commentary rather
-than decorating it.
+Use this mode when the footage should correspond to specific points in the audio. It also has the
+strongest fair-use position, since the footage illustrates the commentary rather than decorating it
+(see [LEGAL.md](LEGAL.md)).
 
 ---
 
@@ -442,64 +444,22 @@ Notes:
 
 ## Copyright and sourcing
 
-Not legal advice. US-centric. Consult a lawyer for your specific situation.
+Using material you do not own carries constraints that are widely misunderstood. See
+**[LEGAL.md](LEGAL.md)** for the detail. In brief:
 
-### Common misconceptions
+- Clip length is not a safe harbour. US copyright law has no de minimis duration threshold, and
+  amount is assessed in aggregate rather than per clip.
+- Muting, darkening, and blurring do not change copyright status.
+- Fair use for criticism is strongest when a clip illustrates a specific point. Decorative
+  background use is a weaker position than footage tied to the commentary.
+- Ripping encrypted discs violates DMCA §1201 independently of fair use.
+- Content ID does not evaluate fair use.
 
-| Claim | Status |
-| --- | --- |
-| "Short clips are fine." | False. US copyright law has no de minimis duration threshold. Clip length affects one of four fair-use factors and is not decisive. |
-| "Aggregate length doesn't matter." | False. Total amount taken is what the third factor weighs. 200 clips of 5s is over 16 minutes of the work. |
-| "Muting it makes it fine." | Partly. Muting removes the sound-recording claim. The audiovisual work is separately protected. |
-| "Darkening or blurring makes it fine." | False. A derivative of an infringing copy is still infringing. |
-| "Trailers are legally different." | False. Trailers are studio-owned and fully protected. Enforcement is rarer, which is a difference in practice, not in law. |
+`--cues` and `--max-clips` are the two options that bear on this: the first ties footage to the
+commentary, the second bounds how much of the source is used. Lower-risk sources (stock, public
+domain, your own footage) work through the same pipeline with no workflow change.
 
-### Purpose matters more than length
-
-Film criticism is an enumerated fair-use purpose (17 U.S.C. §107 names "criticism, comment"). The
-claim is strongest when a clip illustrates a specific point being made about it.
-
-Footage used as decorative background consumes the work for its entertainment value, which is what
-the rights holder is entitled to. Purely decorative use is therefore a weaker position than
-footage tied to the commentary, regardless of clip length.
-
-`--cues` supports the stronger pattern; `--max-clips` bounds the total amount taken.
-
-### Acquisition is a separate issue
-
-Circumventing disc encryption (AACS, CSS) violates DMCA §1201 independently of fair use. A
-successful fair-use defence does not resolve a §1201 claim. Downloading from unauthorised sources
-is direct infringement.
-
-### Content ID
-
-Content ID is automated fingerprint matching. It does not evaluate fair use. The usual outcome of a
-match is a claim redirecting revenue to the rights holder, not a strike. Manual strikes from rights
-holders are the higher-severity risk, and enforcement varies considerably between studios.
-
-The `--darken`, `--blur`, `--grain`, and `--mirror` options exist because background footage needs
-to be visually suppressed to work under narration. Used to evade automated matching, they may
-breach platform terms of service, and deliberate obfuscation can support a finding of willful
-infringement, which raises statutory damages.
-
-### Source options by risk
-
-| Source | Risk | Notes |
-| --- | --- | --- |
-| Your own footage | None | Podcast multicam, self-shot B-roll. |
-| Generated visuals | None | Burned-in captions, waveforms, abstract backdrops. |
-| Public domain film | None | Pre-1930 US works; Internet Archive, Prelinger Archives. |
-| Licensed stock | None | Pexels, Pixabay, Videvo (free); Artgrid, Storyblocks (paid). |
-| Official trailers | Low | Studio-distributed and rarely enforced, but not legally distinct. |
-| Poster and key art | Low | Promotional material, widely tolerated. Pair with `--zoom`. |
-| Full film as background | Highest | Weakest fair-use position, plus §1201 exposure if ripped. |
-
-Because sources are interchangeable, switching to lower-risk material requires no workflow change:
-
-```bash
-rcc generate -i ./stock-footage/ -d 90s --profile shorts
-rcc generate -i ./trailers/ -d 90s
-```
+Not legal advice.
 
 ---
 
