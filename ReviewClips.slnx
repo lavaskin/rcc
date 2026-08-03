@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ReviewClips.Cli/ReviewClips.Cli.csproj" />
+    <Project Path="src/ReviewClips.Core/ReviewClips.Core.csproj" />
+    <Project Path="src/ReviewClips.Ffmpeg/ReviewClips.Ffmpeg.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ReviewClips.Core.Tests/ReviewClips.Core.Tests.csproj" />
+    <Project Path="tests/ReviewClips.Ffmpeg.Tests/ReviewClips.Ffmpeg.Tests.csproj" />
+  </Folder>
+</Solution>

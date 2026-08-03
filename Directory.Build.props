@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors></WarningsNotAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CA1848;CA1873;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    CA1848 (LoggerMessage delegates)  - unnecessary ceremony for a CLI tool.
+    CA1873 (expensive log arguments)  - fires on the params array of ordinary log calls;
+                                        guarding every one with IsEnabled costs more in
+                                        readability than it saves in a short-lived process.
+    CA2007 (ConfigureAwait)           - no SynchronizationContext in a console app.
+    CA1031 (catch general exception)  - the CLI boundary deliberately catches broadly.
+  -->
+
+</Project>

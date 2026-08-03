@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Scoring maths and apportionment are internal but are the most valuable things to test. -->
+    <InternalsVisibleTo Include="ReviewClips.Core.Tests" />
+  </ItemGroup>
+
+</Project>

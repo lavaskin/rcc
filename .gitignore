@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.vscode/
+*.mp4
+*.mkv
+*.manifest.json

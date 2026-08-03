@@ -1,0 +1,226 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using ReviewClips.Core.Analysis;
+using ReviewClips.Core.Primitives;
+using ReviewClips.Ffmpeg.Analysis;
+using ReviewClips.Ffmpeg.Probe;
+
+namespace ReviewClips.Ffmpeg.Tests.Integration;
+
+[Collection(FfmpegTestGroup.Name)]
+public class ProbeTests
+{
+    private readonly FfmpegFixture _fixture;
+
+    public ProbeTests(FfmpegFixture fixture) => _fixture = fixture;
+
+    private FfprobeMediaProbe Probe() =>
+        new(_fixture.Runner, NullLogger<FfprobeMediaProbe>.Instance);
+
+    [Fact]
+    public async Task ReadsCoreStreamProperties()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var info = await Probe().ProbeAsync(_fixture.SimpleClip, TestContext.Current.CancellationToken);
+
+        info.Width.ShouldBe(1280);
+        info.Height.ShouldBe(720);
+        info.FrameRate.ShouldBe(30d, 0.01);
+        info.VideoCodec.ShouldBe("h264");
+        info.PixelFormat.ShouldBe("yuv420p");
+        info.Duration.TotalSeconds.ShouldBe(10d, 0.2);
+        info.IsHdr.ShouldBeFalse();
+        info.IsAnamorphic.ShouldBeFalse();
+        info.FileSizeBytes.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task DetectsAnamorphicSampleAspectRatio()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var info = await Probe().ProbeAsync(_fixture.AnamorphicClip, TestContext.Current.CancellationToken);
+
+        info.IsAnamorphic.ShouldBeTrue();
+        info.SampleAspectRatio.ShouldBe(new Ratio(32, 27));
+
+        // 720x480 with SAR 32:27 displays as 16:9.
+        info.DisplayAspectRatio.ShouldBe(16d / 9d, 0.01);
+    }
+
+    [Fact]
+    public async Task ThrowsAClearErrorForAMissingFile()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        await Should.ThrowAsync<FileNotFoundException>(() =>
+            Probe().ProbeAsync("/nonexistent/nope.mp4", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("24000/1001", 23.976)]
+    [InlineData("30/1", 30)]
+    [InlineData("25", 25)]
+    public void ParsesRationalFrameRates(string input, double expected)
+    {
+        FfprobeMediaProbe.TryParseRational(input, out var value).ShouldBeTrue();
+        value.ShouldBe(expected, 0.001);
+    }
+
+    [Theory]
+    [InlineData("0/0")]
+    [InlineData("")]
+    [InlineData("abc")]
+    public void RejectsUnusableFrameRates(string input) =>
+        FfprobeMediaProbe.TryParseRational(input, out _).ShouldBeFalse();
+
+    [Theory]
+    [InlineData("0:1")]
+    [InlineData("N/A")]
+    [InlineData(null)]
+    public void TreatsUnspecifiedSampleAspectRatioAsAbsent(string? input) =>
+        // ffprobe emits 0:1 for "unspecified"; treating it as a real ratio would corrupt scaling.
+        FfprobeMediaProbe.ParseRatio(input).ShouldBeNull();
+}
+
+[Collection(FfmpegTestGroup.Name)]
+public class AnalyzerTests
+{
+    private readonly FfmpegFixture _fixture;
+
+    public AnalyzerTests(FfmpegFixture fixture) => _fixture = fixture;
+
+    private async Task<MediaAnalysis> AnalyseAsync(string path, AnalysisSettings? settings = null)
+    {
+        var probe = new FfprobeMediaProbe(_fixture.Runner, NullLogger<FfprobeMediaProbe>.Instance);
+        var analyzer = new FfmpegMediaAnalyzer(_fixture.Runner, NullLogger<FfmpegMediaAnalyzer>.Instance);
+
+        var info = await probe.ProbeAsync(path, TestContext.Current.CancellationToken);
+
+        return await analyzer.AnalyzeAsync(
+            info,
+            settings ?? new AnalysisSettings(),
+            progress: null,
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CapturesMotionSamplesAcrossTheWholeRuntime()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // This is the regression guard for the metadata truncation bug: the fixture is built by
+        // concatenation, which reinitialises the filter graph mid-stream. Writing metadata to a
+        // file lost everything before the final reinit, leaving samples only near the end.
+        var analysis = await AnalyseAsync(_fixture.MultiShotClip);
+
+        var samples = analysis.Motion.Samples;
+        samples.ShouldNotBeEmpty();
+
+        var duration = analysis.Duration.TotalSeconds;
+
+        // Samples must start near zero and run to near the end.
+        samples[0].AtSeconds.ShouldBeLessThan(1d);
+        samples[^1].AtSeconds.ShouldBeGreaterThan(duration - 2d);
+
+        // At 4 fps over ~20s we expect roughly 80 samples; allow generous slack.
+        samples.Count.ShouldBeGreaterThan((int)(duration * 2));
+    }
+
+    [Fact]
+    public async Task DetectsSceneCutsBetweenDistinctShots()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var analysis = await AnalyseAsync(_fixture.MultiShotClip);
+
+        // The fixture has four visually unrelated shots, so cuts must be found.
+        analysis.SceneCuts.ShouldNotBeEmpty();
+        analysis.SceneCuts.ShouldBeInOrder();
+        analysis.SceneCuts.ShouldAllBe(c => c > TimeSpan.Zero && c <= analysis.Duration);
+    }
+
+    [Fact]
+    public async Task DetectsThePlantedBlackStretch()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // The fixture holds 3s of black starting at 14s.
+        var analysis = await AnalyseAsync(_fixture.MultiShotClip);
+
+        analysis.BlackRanges.ShouldNotBeEmpty();
+
+        var black = analysis.BlackRanges[0];
+        black.Start.TotalSeconds.ShouldBeInRange(13d, 15d);
+        black.Duration.TotalSeconds.ShouldBeGreaterThan(1.5d);
+    }
+
+    [Fact]
+    public async Task DerivesShotsThatTileTheWholeRuntime()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var analysis = await AnalyseAsync(_fixture.MultiShotClip);
+        var shots = analysis.Shots();
+
+        shots.ShouldNotBeEmpty();
+        shots[0].Start.ShouldBe(TimeSpan.Zero);
+        shots[^1].End.ShouldBe(analysis.Duration);
+
+        // Contiguous with no gaps or overlaps.
+        for (var i = 0; i < shots.Count - 1; i++)
+        {
+            shots[i].End.ShouldBe(shots[i + 1].Start);
+        }
+    }
+
+    [Fact]
+    public async Task HonoursTheConfiguredSampleRate()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var sparse = await AnalyseAsync(_fixture.SimpleClip, new AnalysisSettings { SampleFrameRate = 2 });
+        var dense = await AnalyseAsync(_fixture.SimpleClip, new AnalysisSettings { SampleFrameRate = 8 });
+
+        dense.Motion.Count.ShouldBeGreaterThan(sparse.Motion.Count);
+    }
+
+    [Fact]
+    public void FilterChain_WritesMetadataToStdoutNotAFile()
+    {
+        // A file target is silently truncated on filter-graph reinitialisation.
+        var chain = FfmpegMediaAnalyzer.BuildFilterChain(new AnalysisSettings());
+
+        chain.ShouldContain("metadata=print:file=-");
+        chain.ShouldContain("scdet=threshold=8");
+        chain.ShouldContain("fps=4");
+        chain.ShouldContain("scale=320:-2");
+    }
+
+    [Fact]
+    public void Arguments_KeepLogLevelHighEnoughForDetectorOutput()
+    {
+        var info = new ReviewClips.Core.Media.MediaInfo
+        {
+            Path = "/movies/x.mkv",
+            FileSizeBytes = 1,
+            LastModifiedUtc = DateTimeOffset.UnixEpoch,
+            Duration = TimeSpan.FromMinutes(10),
+            Width = 1920,
+            Height = 1080,
+            FrameRate = 24,
+            VideoCodec = "h264",
+            PixelFormat = "yuv420p",
+            SampleAspectRatio = Ratio.One,
+            HasAudio = false,
+        };
+
+        var arguments = FfmpegMediaAnalyzer.BuildArguments(info, new AnalysisSettings());
+
+        // scdet, blackdetect and freezedetect report at info level; -loglevel error would
+        // discard every one of them and the analysis would silently find nothing.
+        arguments.ShouldNotContain("error");
+        arguments.ShouldContain("-an");
+        arguments.ShouldContain("-sn");
+    }
+}

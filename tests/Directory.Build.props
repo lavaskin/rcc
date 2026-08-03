@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- Inherit the repository-wide settings, then relax the rules that fight test conventions. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      CA1707 (no underscores in member names) is a public-API rule. Test methods use the
+      conventional Method_Scenario_Expectation form, which reads far better in failure output.
+      CA1861 (constant arrays as arguments) fires on every inline [InlineData] array.
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA1861</NoWarn>
+  </PropertyGroup>
+
+</Project>

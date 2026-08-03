@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ReviewClips.Core\ReviewClips.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Parsers and argument builders are internal but are the core things worth testing. -->
+    <InternalsVisibleTo Include="ReviewClips.Ffmpeg.Tests" />
+  </ItemGroup>
+
+</Project>
