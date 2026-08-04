@@ -66,7 +66,14 @@ internal sealed class BatchCommand
         // reproducible from a single --seed.
         var template = builder.Build(parse);
         var baseSeed = template.Selection.Seed ?? Random.Shared.Next();
-        var stem = Path.GetFileNameWithoutExtension(template.OutputPath);
+
+        // An explicit --output names the whole batch; otherwise each variant names itself
+        // after its own settings, which includes its own seed.
+        var fixedStem = parse.GetValue(_options.Output) is null
+            ? null
+            : Path.GetFileNameWithoutExtension(template.OutputPath);
+
+        var profileName = parse.GetValue(_options.Profile);
 
         Directory.CreateDirectory(directory);
 
@@ -74,14 +81,14 @@ internal sealed class BatchCommand
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var output = Path.Combine(directory, $"{stem}-{i + 1:D2}.mp4");
             var seed = unchecked(baseSeed + (i * 7919));
+            var variant = template with { Selection = template.Selection with { Seed = seed } };
 
-            var request = template with
-            {
-                OutputPath = Path.GetFullPath(output),
-                Selection = template.Selection with { Seed = seed },
-            };
+            var stem = fixedStem
+                ?? Path.GetFileNameWithoutExtension(ClipRequestBuilder.DeriveOutputName(variant, profileName));
+
+            var output = Path.Combine(directory, $"{stem}-{i + 1:D2}.mp4");
+            var request = variant with { OutputPath = Path.GetFullPath(output) };
 
             console.MarkupLine($"[bold]variant {i + 1}/{count}[/] {Styles.Faint($"seed {seed}")}");
 

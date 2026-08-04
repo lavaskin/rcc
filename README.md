@@ -115,7 +115,7 @@ would skip.
 | Option | Default | Description |
 | --- | --- | --- |
 | `-i, --input <path>` | required | Source file, directory, or glob. Repeatable. |
-| `-o, --output <path>` | derived from input | Output file path. |
+| `-o, --output <path>` | derived from settings | Output file path. |
 | `-d, --duration <dur>` | `60s` | Runtime of the finished file. |
 | `-p, --profile <name>` | none | Preset to use as a base. Explicit options override it. |
 

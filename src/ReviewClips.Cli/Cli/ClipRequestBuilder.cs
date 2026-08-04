@@ -1,4 +1,6 @@
 using System.CommandLine;
+using System.Globalization;
+using System.Text;
 using ReviewClips.Cli.Profiles;
 using ReviewClips.Core.Analysis;
 using ReviewClips.Core.Options;
@@ -15,6 +17,17 @@ namespace ReviewClips.Cli.Cli;
 /// </summary>
 internal sealed class ClipRequestBuilder
 {
+    /// <summary>
+    /// Everything a request is before any profile or CLI value touches it. Used by
+    /// <see cref="DeriveOutputName"/> to decide which settings are unusual enough to name a file after.
+    /// </summary>
+    private static readonly ClipRequest Defaults = new()
+    {
+        Sources = [],
+        OutputPath = string.Empty,
+        TargetDuration = TimeSpan.FromSeconds(60),
+    };
+
     private readonly GenerateOptions _options;
     private readonly ProfileLibrary _profiles;
     private readonly SourceResolver _resolver;
@@ -153,13 +166,11 @@ internal sealed class ClipRequestBuilder
         var duration = parse.GetValue(_options.TargetDuration) ?? request.TargetDuration;
         var splice = parse.GetValue(_options.Splice) ?? request.SpliceLength;
 
-        var output = outputOverride
-            ?? parse.GetValue(_options.Output)
-            ?? DefaultOutputName(sources, duration);
-
         var result = request with
         {
-            OutputPath = Path.GetFullPath(output),
+            // Filled in below: the derived name describes the settings, so it can only be
+            // built once everything else has been resolved.
+            OutputPath = string.Empty,
             TargetDuration = duration,
             SpliceLength = splice,
             SpliceJitter = parse.GetValue(_options.SpliceJitter) ?? request.SpliceJitter,
@@ -177,6 +188,12 @@ internal sealed class ClipRequestBuilder
             KeepTemporaryFiles = parse.GetValue(_options.KeepTemp),
             ManifestPath = parse.GetValue(_options.Manifest),
         };
+
+        var output = outputOverride
+            ?? parse.GetValue(_options.Output)
+            ?? DeriveOutputName(result, profileName);
+
+        result = result with { OutputPath = Path.GetFullPath(output) };
 
         Validate(result);
         return result;
@@ -245,16 +262,151 @@ internal sealed class ClipRequestBuilder
         }
     }
 
-    /// <summary>Derives a sensible output name from the first source, e.g. <c>Alien-bg-90s.mp4</c>.</summary>
-    private static string DefaultOutputName(IReadOnlyList<string> sources, TimeSpan duration)
+    /// <summary>
+    /// Derives a self-describing output name from the first source and the settings that
+    /// distinguish one render from another, e.g. <c>Alien-bg-shorts-1080x1920-1m30s-q20.mp4</c>.
+    /// <para>
+    /// Source, profile, resolution, runtime and quality are always present. Everything else
+    /// appears only when it differs from the built-in default, so an ordinary render keeps a
+    /// short name while an unusual one carries the reason it looks different. Renders that
+    /// differ in any named setting no longer overwrite each other.
+    /// </para>
+    /// <para>
+    /// Exposed so <c>batch</c> can re-derive a name per variant: each one gets its own seed,
+    /// and a name carrying the template's seed would be a lie.
+    /// </para>
+    /// </summary>
+    internal static string DeriveOutputName(ClipRequest request, string? profileName)
     {
-        var stem = Path.GetFileNameWithoutExtension(sources[0]);
+        var stem = Path.GetFileNameWithoutExtension(request.Sources[0]);
         if (string.IsNullOrWhiteSpace(stem))
         {
             stem = "clips";
         }
 
-        return $"{stem}-bg-{(int)duration.TotalSeconds}s.mp4";
+        // Only the first source names the file, so record how many others fed into it.
+        if (request.Sources.Count > 1)
+        {
+            stem += $"+{request.Sources.Count - 1}";
+        }
+
+        var parts = new List<string> { stem, "bg" };
+
+        if (Slug(profileName) is { Length: > 0 } profile)
+        {
+            parts.Add(profile);
+        }
+
+        parts.Add(Dimensions(request.Format));
+        parts.Add(DurationToken(request.TargetDuration));
+
+        if (request.SpliceLength != Defaults.SpliceLength)
+        {
+            parts.Add($"cut{DurationToken(request.SpliceLength)}");
+        }
+
+        if (request.MaxDistinctClips is { } cap)
+        {
+            parts.Add($"{cap}clips");
+        }
+
+        if (request.Selection.Strategy != Defaults.Selection.Strategy)
+        {
+            parts.Add(request.Selection.Strategy.ToString().ToLowerInvariant());
+        }
+
+        if (Math.Abs(request.Format.FrameRate - Defaults.Format.FrameRate) > 0.01d)
+        {
+            parts.Add($"{Number(request.Format.FrameRate)}fps");
+        }
+
+        if (request.Look.HasSpeedChange)
+        {
+            parts.Add($"{Number(request.Look.Speed)}x");
+        }
+
+        parts.Add($"q{request.Encoder.Quality}");
+
+        if (request.Encoder.Codec != Defaults.Encoder.Codec)
+        {
+            parts.Add(request.Encoder.Codec.ToString().ToLowerInvariant());
+        }
+
+        if (!request.Mute)
+        {
+            parts.Add("audio");
+        }
+
+        // A recorded seed is what makes the file reproducible, so it belongs in the name.
+        if (request.Selection.Seed is { } seed)
+        {
+            parts.Add($"seed{seed}");
+        }
+
+        return string.Join('-', parts) + ".mp4";
+    }
+
+    /// <summary>Frame size as <c>1080p</c> for 16:9, otherwise <c>1080x1920</c>.</summary>
+    private static string Dimensions(OutputFormat format) =>
+        format.Width * 9 == format.Height * 16
+            ? $"{format.Height}p"
+            : $"{format.Width}x{format.Height}";
+
+    /// <summary>Compact runtime: <c>45s</c>, <c>1m30s</c>, <c>16m</c>, <c>1h5m</c>.</summary>
+    private static string DurationToken(TimeSpan value)
+    {
+        var total = Math.Max(0, (int)Math.Round(value.TotalSeconds));
+        if (total < 60)
+        {
+            return $"{total}s";
+        }
+
+        var hours = total / 3600;
+        var minutes = total / 60 % 60;
+        var seconds = total % 60;
+
+        var text = hours > 0 ? $"{hours}h" : string.Empty;
+        if (minutes > 0)
+        {
+            text += $"{minutes}m";
+        }
+
+        if (seconds > 0)
+        {
+            text += $"{seconds}s";
+        }
+
+        return text;
+    }
+
+    private static string Number(double value) =>
+        value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Reduces a profile name to lowercase alphanumerics and single dashes. Profiles can be
+    /// declared in <c>appsettings.json</c>, so the name is not guaranteed to be path-safe.
+    /// </summary>
+    private static string Slug(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                builder.Append(char.ToLowerInvariant(c));
+            }
+            else if (builder.Length > 0 && builder[^1] != '-')
+            {
+                builder.Append('-');
+            }
+        }
+
+        return builder.ToString().TrimEnd('-');
     }
 
     private static IReadOnlyList<T> Or<T>(List<T>? candidate, IReadOnlyList<T> fallback) =>
