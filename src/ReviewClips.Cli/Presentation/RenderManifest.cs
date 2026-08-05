@@ -53,6 +53,17 @@ internal sealed record RenderManifest
     [JsonPropertyName("distinctSourceSeconds")]
     public double DistinctSourceSeconds { get; init; }
 
+    /// <summary>Combined runtime of every source that fed the render.</summary>
+    [JsonPropertyName("availableSourceSeconds")]
+    public double AvailableSourceSeconds { get; init; }
+
+    /// <summary>
+    /// <c>distinctSourceSeconds / availableSourceSeconds</c>. The share of the supplied footage
+    /// this render consumes, with repeats and overlaps counted once.
+    /// </summary>
+    [JsonPropertyName("sourceUsageFraction")]
+    public double SourceUsageFraction { get; init; }
+
     [JsonPropertyName("encoder")]
     public string Encoder { get; init; } = string.Empty;
 
@@ -100,6 +111,8 @@ internal sealed record RenderManifest
             DistinctClips = plan.DistinctClipCount,
             Slots = plan.Segments.Count,
             DistinctSourceSeconds = Math.Round(plan.DistinctSourceDuration.TotalSeconds, 3),
+            AvailableSourceSeconds = Math.Round(plan.SourceUsage.Available.TotalSeconds, 3),
+            SourceUsageFraction = Math.Round(plan.SourceUsage.Fraction, 5),
             TargetSeconds = Math.Round(request.TargetDuration.TotalSeconds, 3),
             RenderedSeconds = Math.Round(plan.EffectiveDuration.TotalSeconds, 3),
             Encoder = plan.Encoder.VideoEncoder,

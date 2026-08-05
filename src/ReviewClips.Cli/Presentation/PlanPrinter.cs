@@ -43,9 +43,12 @@ internal static class PlanPrinter
                 : $"{distinct} distinct x ~{averageClip:0.#}s, "
                   + $"repeated to fill {slots} slots ({plan.RepeatFactor:0.#}x)");
 
+        var usage = plan.SourceUsage;
+
         table.AddRow(
             "Source used",
-            $"{plan.DistinctSourceDuration.TotalSeconds:0.#}s of footage"
+            $"{usage.Used.TotalSeconds:0.#}s of footage"
+            + (usage.Available > TimeSpan.Zero ? $", {usage.Percent:0.#}% of the source" : string.Empty)
             + (distinct == slots ? string.Empty : $" (vs {plan.TotalDuration.TotalSeconds:0.#}s of screen time)"));
         table.AddRow("Strategy", $"{request.Selection.Strategy} (seed {plan.Seed})");
 

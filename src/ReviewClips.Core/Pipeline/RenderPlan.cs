@@ -31,6 +31,15 @@ public sealed record RenderPlan
     /// <summary>Total source footage consumed, counting each distinct clip once.</summary>
     public TimeSpan DistinctSourceDuration => Planning.ClipSequencer.DistinctSourceDuration(Segments);
 
+    /// <summary>
+    /// What share of the supplied footage this render consumes. Derived rather than stored so
+    /// the summary, the manifest and the guardrail can never report different numbers.
+    /// </summary>
+    public Planning.SourceUsageReport SourceUsage => Planning.SourceUsageGuard.Evaluate(
+        Segments,
+        Sources.Select(s => s.Info.Duration),
+        Request.MaxSourceFraction);
+
     /// <summary>How many times the average clip appears. 1.0 means no repetition.</summary>
     public double RepeatFactor =>
         DistinctClipCount == 0 ? 0d : (double)Segments.Count / DistinctClipCount;

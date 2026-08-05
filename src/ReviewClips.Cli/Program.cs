@@ -85,6 +85,14 @@ catch (SourceResolutionException ex)
     AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");
     return ExitCodes.UsageError;
 }
+catch (SourceUsageLimitException ex)
+{
+    // A policy refusal, not "nothing usable was found": planning succeeded and the settings
+    // were declined, which is the same class of problem as a bad argument.
+    AnsiConsole.MarkupLine($"[red]refused:[/] {Markup.Escape(ex.Message)}");
+    AnsiConsole.MarkupLine(Styles.Faint("drop --strict-source-limit to make this a warning instead"));
+    return ExitCodes.UsageError;
+}
 catch (RenderPlanningException ex)
 {
     AnsiConsole.MarkupLine($"[red]error:[/] {Markup.Escape(ex.Message)}");

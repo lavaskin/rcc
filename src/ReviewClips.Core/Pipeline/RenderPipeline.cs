@@ -224,7 +224,25 @@ public sealed class RenderPipeline
             }
         }
 
-        // 6. Resolve the encoder.
+        // 6. Measure how much of the source this consumes.
+        // Deliberately after the repeat-fill: the fill is what decouples runtime from footage
+        // consumed, so measuring before it would report the pool rather than the render.
+        var usage = SourceUsageGuard.Evaluate(
+            segments,
+            sources.Select(s => s.Info.Duration),
+            request.MaxSourceFraction);
+
+        if (SourceUsageGuard.Describe(usage) is { } usageMessage)
+        {
+            if (request.EnforceMaxSourceFraction)
+            {
+                throw new SourceUsageLimitException(usageMessage, usage);
+            }
+
+            warnings.Add(usageMessage);
+        }
+
+        // 7. Resolve the encoder.
         var encoder = await _encoderSelector.SelectAsync(request.Encoder, cancellationToken);
         if (request.Encoder.Preference == EncoderPreference.Auto && !encoder.IsHardware)
         {
@@ -581,4 +599,34 @@ public sealed class RenderPlanningException : Exception
     public RenderPlanningException()
     {
     }
+}
+
+/// <summary>
+/// Thrown when a render would consume more of the source than the configured limit allows and
+/// <see cref="Options.ClipRequest.EnforceMaxSourceFraction"/> is set.
+/// <para>
+/// Deliberately not a <see cref="RenderPlanningException"/>. That one means "nothing usable
+/// could be produced", which is a different situation with a different exit code: here the
+/// planning worked perfectly and a policy declined the result.
+/// </para>
+/// </summary>
+public sealed class SourceUsageLimitException : Exception
+{
+    public SourceUsageLimitException(string message, Planning.SourceUsageReport report)
+        : base(message) => Report = report;
+
+    public SourceUsageLimitException(string message) : base(message)
+    {
+    }
+
+    public SourceUsageLimitException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    public SourceUsageLimitException()
+    {
+    }
+
+    public Planning.SourceUsageReport? Report { get; }
 }

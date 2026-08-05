@@ -45,6 +45,18 @@ internal sealed class GenerateOptions
     public Option<TimeSpan?> SpliceJitter { get; } =
         ValueParsers.Duration("--splice-jitter", "Random variation applied to each splice length.");
 
+    public Option<double?> MaxSourcePercent { get; } = new("--max-source-percent")
+    {
+        Description = "Warn when the render consumes more than this share of the source footage. "
+            + "Pairs with --max-clips, which is how you lower it. 0 disables the check.",
+        HelpName = "0-100",
+    };
+
+    public Option<bool> StrictSourceLimit { get; } = new("--strict-source-limit")
+    {
+        Description = "Fail rather than warn when --max-source-percent is exceeded.",
+    };
+
     public Option<string?> Profile { get; } = new("--profile", "-p")
     {
         Description = "Named preset to start from. See 'rcc profiles'.",
@@ -340,6 +352,8 @@ internal sealed class GenerateOptions
         yield return Splice;
         yield return MaxClips;
         yield return SpliceJitter;
+        yield return MaxSourcePercent;
+        yield return StrictSourceLimit;
         yield return Profile;
         yield return Strategy;
         yield return Seed;

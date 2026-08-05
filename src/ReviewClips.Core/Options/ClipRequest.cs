@@ -33,6 +33,23 @@ public sealed record ClipRequest
     /// </summary>
     public int? MaxDistinctClips { get; init; }
 
+    /// <summary>
+    /// Share of the combined source runtime this render may consume before it is remarked upon,
+    /// measured as the union of the referenced ranges rather than as clip count times clip
+    /// length. <c>0</c> disables the check.
+    /// </summary>
+    public double MaxSourceFraction { get; init; } = Planning.SourceUsageGuard.DefaultLimit;
+
+    /// <summary>
+    /// Turn <see cref="MaxSourceFraction"/> from a warning into a refusal.
+    /// <para>
+    /// Off by default. A hard failure at 10% refuses ordinary short renders outright — a 30s
+    /// background track cut from a three-minute source is 16.7% and would simply not run — so
+    /// the default surfaces the exposure without breaking the common case.
+    /// </para>
+    /// </summary>
+    public bool EnforceMaxSourceFraction { get; init; }
+
     public SelectionOptions Selection { get; init; } = new();
 
     public OutputFormat Format { get; init; } = OutputFormat.Youtube;

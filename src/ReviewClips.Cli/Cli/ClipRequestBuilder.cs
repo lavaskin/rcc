@@ -175,6 +175,14 @@ internal sealed class ClipRequestBuilder
             SpliceLength = splice,
             SpliceJitter = parse.GetValue(_options.SpliceJitter) ?? request.SpliceJitter,
             MaxDistinctClips = parse.GetValue(_options.MaxClips) ?? request.MaxDistinctClips,
+
+            // Taken as a percentage on the command line because that is how the guideline is
+            // always quoted, and stored as a fraction because that is what it is compared against.
+            MaxSourceFraction = parse.GetValue(_options.MaxSourcePercent) is { } percent
+                ? percent / 100d
+                : request.MaxSourceFraction,
+            EnforceMaxSourceFraction =
+                parse.GetValue(_options.StrictSourceLimit) || request.EnforceMaxSourceFraction,
             Selection = selection,
             Format = format,
             Look = look,
@@ -226,6 +234,11 @@ internal sealed class ClipRequestBuilder
         if (request.MaxDistinctClips is { } cap && cap < 1)
         {
             throw new CliUsageException("--max-clips must be at least 1.");
+        }
+
+        if (request.MaxSourceFraction is < 0d or > 1d)
+        {
+            throw new CliUsageException("--max-source-percent must be between 0 and 100.");
         }
 
         if (request.Encoder.Quality is < 0 or > 51)
