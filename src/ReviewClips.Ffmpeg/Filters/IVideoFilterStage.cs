@@ -51,14 +51,41 @@ public static class FilterStageOrder
     /// <summary>Brightness, contrast and saturation.</summary>
     public const int Look = 900;
 
+    /// <summary>
+    /// After <see cref="Look"/> so it sharpens the graded image, but before <see cref="Blur"/>
+    /// so an explicit <c>--blur</c> still dominates. Asking for both is contradictory; this
+    /// ordering at least makes the contradiction resolve the way the stronger request implies.
+    /// </summary>
+    public const int Sharpen = 950;
+
     public const int Blur = 1000;
 
+    /// <summary>
+    /// Immediately after <see cref="Blur"/>. Pixelation is a downscale and upscale, so blurring
+    /// first softens the block edges; doing it the other way round blurs away the blocks that
+    /// are the entire point.
+    /// </summary>
+    public const int Pixelate = 1010;
+
     public const int Vignette = 1100;
+
+    /// <summary>
+    /// Alongside <see cref="Vignette"/>: both are edge treatments, and feathering after the
+    /// corners are darkened keeps the fade the outermost of the two.
+    /// </summary>
+    public const int FadeEdges = 1150;
 
     /// <summary>Grain last among the looks, so it is not blurred away.</summary>
     public const int Grain = 1200;
 
     public const int Overlay = 1300;
+
+    /// <summary>
+    /// After <see cref="Overlay"/> and well before <see cref="OutputFormat"/>. A credit line
+    /// exists to be read, so nothing that obscures the frame may run after it — being blurred,
+    /// grained or watermarked over would defeat the point of burning it in.
+    /// </summary>
+    public const int Attribution = 1350;
 
     /// <summary>Force a broadly compatible pixel format immediately before encoding.</summary>
     public const int OutputFormat = 9000;

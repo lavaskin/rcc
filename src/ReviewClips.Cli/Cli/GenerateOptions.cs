@@ -202,6 +202,34 @@ internal sealed class GenerateOptions
         HelpName = "0-100",
     };
 
+    public Option<double?> Gamma { get; } = new("--gamma")
+    {
+        Description = "Gamma adjustment; 1 leaves it untouched. Above 1 lifts the midtones.",
+        HelpName = "multiplier",
+    };
+
+    public Option<bool> Grayscale { get; } = new("--grayscale")
+    {
+        Description = "Drop all colour. Shorthand for --saturation 0.",
+    };
+
+    public Option<double?> Sharpen { get; } = new("--sharpen")
+    {
+        Description = "Unsharp mask strength; 0 disables. Helps a soft upscale.",
+        HelpName = "0-3",
+    };
+
+    public Option<double?> Pixelate { get; } = new("--pixelate")
+    {
+        Description = "Chunky downscale-and-upscale factor; 1 disables.",
+        HelpName = "1.1-16",
+    };
+
+    public Option<TimeSpan?> FadeEdges { get; } = ValueParsers.Duration(
+        "--fade-edges",
+        "Fade each clip in and out by this much. Unlike --transition this stays inside "
+        + "one clip, so the stream-copy stitch still applies.");
+
     public Option<bool> Vignette { get; } = new("--vignette")
     {
         Description = "Darken the frame corners.",
@@ -211,6 +239,23 @@ internal sealed class GenerateOptions
     {
         Description = "Horizontally mirror every clip.",
     };
+
+    public Option<bool> FlipVertical { get; } = new("--flip")
+    {
+        Description = "Vertically flip every clip.",
+    };
+
+    public Option<string?> Attribution { get; } = new("--attribution")
+    {
+        Description = "Burn a credit line into a corner of every clip, "
+            + "e.g. \"Clip from Heat (1995), dir. Michael Mann\".",
+        HelpName = "text",
+    };
+
+    public Option<TextPosition?> AttributionPosition { get; } =
+        ValueParsers.EnumOption<TextPosition>(
+            "--attribution-position",
+            "Where the attribution line sits.");
 
     public Option<double?> Zoom { get; } = new("--zoom")
     {
@@ -411,8 +456,16 @@ internal sealed class GenerateOptions
         yield return Contrast;
         yield return Blur;
         yield return Grain;
+        yield return Gamma;
+        yield return Grayscale;
+        yield return Sharpen;
+        yield return Pixelate;
+        yield return FadeEdges;
         yield return Vignette;
         yield return Mirror;
+        yield return FlipVertical;
+        yield return Attribution;
+        yield return AttributionPosition;
         yield return Zoom;
         yield return Speed;
         yield return Overlay;

@@ -45,16 +45,23 @@ public sealed class LookStage : IVideoFilterStage
             filters.Add($"lutyuv=y=minval+(val-minval)*{scale}");
         }
 
-        var eq = new List<string>(2);
+        var eq = new List<string>(3);
 
-        if (Math.Abs(look.Saturation - 1d) > 0.001d)
+        if (Math.Abs(look.EffectiveSaturation - 1d) > 0.001d)
         {
-            eq.Add($"saturation={Num(Math.Clamp(look.Saturation, 0d, 3d))}");
+            eq.Add($"saturation={Num(Math.Clamp(look.EffectiveSaturation, 0d, 3d))}");
         }
 
         if (Math.Abs(look.Contrast - 1d) > 0.001d)
         {
             eq.Add($"contrast={Num(Math.Clamp(look.Contrast, 0d, 3d))}");
+        }
+
+        if (Math.Abs(look.Gamma - 1d) > 0.001d)
+        {
+            // eq's gamma is a true power curve, so unlike its brightness it scales rather than
+            // offsets and does not crush the shadows the way the darken note above describes.
+            eq.Add($"gamma={Num(Math.Clamp(look.Gamma, 0.1d, 10d))}");
         }
 
         if (eq.Count > 0)

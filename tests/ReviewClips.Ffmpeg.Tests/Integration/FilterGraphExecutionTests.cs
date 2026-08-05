@@ -49,6 +49,11 @@ public class FilterGraphExecutionTests
             Format = format,
             Look = look,
             SegmentDuration = TimeSpan.FromSeconds(2),
+
+            // Mirrors what the extractor does, so the graph under test is the real one.
+            AttributionTextPath = look.HasAttribution
+                ? TextResources.Materialise(look.Attribution!.Trim())
+                : null,
         };
 
         var graph = VideoFilterGraphBuilder.CreateDefault().Build(context);
@@ -200,6 +205,245 @@ public class FilterGraphExecutionTests
         (even.Height % 2).ShouldBe(0);
 
         await RenderAsync(_fixture.SimpleClip, Info(1280, 720), even, LookOptions.None, "even.mp4");
+    }
+
+    // --- Stages ported from pi ---------------------------------------------
+    //
+    // These are the tests that matter for the new stages. A drawtext or zscale graph can look
+    // perfectly reasonable as a string and still be rejected outright by FFmpeg, which is how
+    // the colorlevels segfault and the zscale colorspace failure were both found.
+
+    [Theory]
+    [InlineData(0.3)]
+    [InlineData(1.5)]
+    [InlineData(3)]
+    public async Task Sharpen_ProducesAValidGraph(double amount)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Sharpen = amount },
+            $"sharpen_{amount}.mp4");
+    }
+
+    [Theory]
+    [InlineData(1.5)]
+    [InlineData(4)]
+    [InlineData(7)]
+    [InlineData(16)]
+    public async Task Pixelate_ProducesAValidGraphAtAnyFactor(double factor)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // Awkward factors are the interesting ones: an odd intermediate dimension makes the
+        // final yuv420p conversion fail, and factor 16 of a small frame nearly bottoms out.
+        var output = await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Pixelate = factor },
+            $"pixelate_{factor}.mp4");
+
+        // The frame must come back at full size, not at the reduced intermediate one.
+        (await _fixture.DimensionsOfAsync(output)).ShouldBe((640, 360));
+    }
+
+    [Fact]
+    public async Task FadeEdges_ProducesAValidGraphAndActuallyDarkensTheEnds()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var output = await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { FadeEdges = TimeSpan.FromSeconds(0.5) },
+            "fade_edges.mp4");
+
+        // The rendered clip is 2s long with a 0.5s fade at each end.
+        var start = await _fixture.LumaStatsAsync(output, atSeconds: 0.02);
+        var middle = await _fixture.LumaStatsAsync(output, atSeconds: 1);
+
+        start.Mean.ShouldBeLessThan(middle.Mean);
+    }
+
+    [Fact]
+    public async Task FadeEdges_IsClampedRatherThanFadingTheWholeClipAway()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // 10s of fade requested on a 2s clip. Clamping to half the length must leave the
+        // midpoint visible rather than producing two seconds of black.
+        var output = await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { FadeEdges = TimeSpan.FromSeconds(10) },
+            "fade_edges_clamped.mp4");
+
+        (await _fixture.LumaStatsAsync(output, atSeconds: 1)).Max.ShouldBeGreaterThan(20);
+    }
+
+    [Theory]
+    [InlineData("Clip from Heat (1995), dir. Michael Mann")]
+    [InlineData("Leon: The Professional")]
+    [InlineData("Ocean's Eleven")]
+    [InlineData("100% [practical] effects, no CGI")]
+    [InlineData(@"back\slash and 'quotes' and, commas")]
+    [InlineData("Amelie - Le Fabuleux Destin d'Amelie Poulain")]
+    public async Task Attribution_SurvivesTitlesFullOfFilterSyntax(string text)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // Every one of these contains a character that is structural in FFmpeg's filter
+        // grammar. Inlining any of them into text= terminates the argument early and fails the
+        // graph, which is the entire reason the stage writes through textfile=.
+        await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Attribution = text },
+            $"attribution_{Math.Abs(text.GetHashCode(StringComparison.Ordinal))}.mp4");
+    }
+
+    [Theory]
+    [InlineData(TextPosition.BottomRight)]
+    [InlineData(TextPosition.TopLeft)]
+    [InlineData(TextPosition.Center)]
+    [InlineData(TextPosition.Bottom)]
+    public async Task Attribution_ProducesAValidGraphAtEveryPosition(TextPosition position)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Attribution = "Clip from Heat (1995)", AttributionPosition = position },
+            $"attribution_pos_{position}.mp4");
+    }
+
+    [Fact]
+    public async Task Attribution_ActuallyMarksThePixels()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // Drawn over a black frame, so any non-black pixel is the text itself. A graph can be
+        // accepted by FFmpeg and still draw nothing, e.g. if the font cannot be resolved.
+        var black = _fixture.PathFor("black_for_text.mp4");
+        var made = await _fixture.RunAsync(
+        [
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-f", "lavfi", "-i", "color=black:s=640x360:r=30", "-t", "3",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            black,
+        ]);
+        made.Success.ShouldBeTrue(made.StandardError);
+
+        var plain = await RenderAsync(
+            black,
+            Info(640, 360),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None,
+            "text_absent.mp4");
+
+        var captioned = await RenderAsync(
+            black,
+            Info(640, 360),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Attribution = "CLIP FROM HEAT (1995)", AttributionPosition = TextPosition.Center },
+            "text_present.mp4");
+
+        (await _fixture.LumaStatsAsync(plain, atSeconds: 1)).Max.ShouldBe(0);
+        (await _fixture.LumaStatsAsync(captioned, atSeconds: 1)).Max.ShouldBeGreaterThan(50);
+    }
+
+    [Fact]
+    public async Task Gamma_ProducesAValidGraphAndChangesTheMidtones()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var deepened = await _fixture.LumaStatsAsync(await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Gamma = 0.6 },
+            "gamma_low.mp4"));
+
+        var lifted = await _fixture.LumaStatsAsync(await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Gamma = 1.8 },
+            "gamma_high.mp4"));
+
+        // eq's gamma is pow(value, 1/gamma), so above 1 brightens. Easy to get backwards, and
+        // the reason the doc comment states the direction explicitly.
+        lifted.Mean.ShouldBeGreaterThan(deepened.Mean);
+    }
+
+    [Fact]
+    public async Task Grayscale_ProducesAValidGraph()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Grayscale = true },
+            "grayscale.mp4");
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task MirrorAndFlip_ProduceAValidGraph(bool mirror, bool flip)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var output = await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            LookOptions.None with { Mirror = mirror, FlipVertical = flip },
+            $"flip_{mirror}_{flip}.mp4");
+
+        // Flipping must not disturb the frame geometry.
+        (await _fixture.DimensionsOfAsync(output)).ShouldBe((640, 360));
+    }
+
+    [Fact]
+    public async Task EveryNewStageAtOnce_StillProducesAValidGraph()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // The stages have to compose. Ordering bugs surface here rather than in isolation.
+        await RenderAsync(
+            _fixture.SimpleClip,
+            Info(1280, 720),
+            OutputFormat.Youtube with { Width = 640, Height = 360 },
+            new LookOptions
+            {
+                Darken = 0.3,
+                Saturation = 0.8,
+                Contrast = 1.1,
+                Gamma = 0.95,
+                Sharpen = 0.6,
+                Blur = 1.2,
+                Pixelate = 2,
+                Vignette = true,
+                FadeEdges = TimeSpan.FromSeconds(0.3),
+                Grain = 8,
+                Mirror = true,
+                FlipVertical = true,
+                Attribution = "Clip from Heat (1995): dir. Michael Mann",
+            },
+            "everything.mp4");
     }
 }
 

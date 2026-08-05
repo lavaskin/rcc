@@ -19,6 +19,13 @@ public sealed record FilterContext
     public int? OverlayInputIndex { get; init; }
 
     /// <summary>
+    /// Path to the file holding <see cref="LookOptions.Attribution"/>, when one has been
+    /// written. Supplied by the caller for the same reason as <see cref="OverlayInputIndex"/>:
+    /// the graph builder describes a graph and does not touch the disk.
+    /// </summary>
+    public string? AttributionTextPath { get; init; }
+
+    /// <summary>
     /// True when the source needs tone-mapping: an HDR transfer function, unless the user
     /// explicitly disabled it.
     /// </summary>

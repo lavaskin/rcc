@@ -26,10 +26,14 @@ public sealed class VideoFilterGraphBuilder
             new MirrorStage(),
             new LutStage(),
             new LookStage(),
+            new SharpenStage(),
             new BlurStage(),
+            new PixelateStage(),
             new VignetteStage(),
+            new FadeEdgesStage(),
             new GrainStage(),
             new OverlayStage(),
+            new AttributionStage(),
             new OutputFormatStage(),
         ]);
 

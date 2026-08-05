@@ -272,16 +272,32 @@ public sealed class ZoomStage : IVideoFilterStage
     }
 }
 
+/// <summary>Mirrors the frame horizontally, vertically, or both.</summary>
 public sealed class MirrorStage : IVideoFilterStage
 {
     public int Order => FilterStageOrder.Mirror;
 
     public string Name => "mirror";
 
-    public bool AppliesTo(FilterContext context) => context.Look.Mirror;
+    public bool AppliesTo(FilterContext context) =>
+        context.Look.Mirror || context.Look.FlipVertical;
 
-    public void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel) =>
-        writer.AddChain(inputLabel, outputLabel, "hflip");
+    public void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel)
+    {
+        var filters = new List<string>(2);
+
+        if (context.Look.Mirror)
+        {
+            filters.Add("hflip");
+        }
+
+        if (context.Look.FlipVertical)
+        {
+            filters.Add("vflip");
+        }
+
+        writer.AddChain(inputLabel, outputLabel, [.. filters]);
+    }
 }
 
 /// <summary>Guarantees an encoder-safe pixel format as the last step.</summary>

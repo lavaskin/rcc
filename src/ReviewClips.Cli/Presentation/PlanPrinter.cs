@@ -202,9 +202,29 @@ internal static class PlanPrinter
             parts.Add($"contrast {look.Contrast:0.##}");
         }
 
+        if (Math.Abs(look.Gamma - 1) > 0.001)
+        {
+            parts.Add($"gamma {look.Gamma:0.##}");
+        }
+
+        if (look.Grayscale)
+        {
+            parts.Add("grayscale");
+        }
+
         if (look.Blur > 0.01)
         {
             parts.Add($"blur {look.Blur:0.##}");
+        }
+
+        if (look.HasSharpen)
+        {
+            parts.Add($"sharpen {look.Sharpen:0.##}");
+        }
+
+        if (look.HasPixelate)
+        {
+            parts.Add($"pixelate {look.Pixelate:0.##}");
         }
 
         if (look.Grain > 0)
@@ -217,9 +237,24 @@ internal static class PlanPrinter
             parts.Add("vignette");
         }
 
+        if (look.HasFadeEdges)
+        {
+            parts.Add($"fade edges {look.FadeEdges.TotalSeconds:0.##}s");
+        }
+
         if (look.Mirror)
         {
             parts.Add("mirror");
+        }
+
+        if (look.FlipVertical)
+        {
+            parts.Add("flip");
+        }
+
+        if (look.HasAttribution)
+        {
+            parts.Add($"attribution ({look.AttributionPosition})");
         }
 
         if (look.HasZoom)

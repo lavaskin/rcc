@@ -128,10 +128,19 @@ internal sealed class ClipRequestBuilder
             Darken = parse.GetValue(_options.Darken) ?? request.Look.Darken,
             Saturation = parse.GetValue(_options.Saturation) ?? request.Look.Saturation,
             Contrast = parse.GetValue(_options.Contrast) ?? request.Look.Contrast,
+            Gamma = parse.GetValue(_options.Gamma) ?? request.Look.Gamma,
+            Grayscale = parse.GetValue(_options.Grayscale) || request.Look.Grayscale,
             Blur = parse.GetValue(_options.Blur) ?? request.Look.Blur,
+            Sharpen = parse.GetValue(_options.Sharpen) ?? request.Look.Sharpen,
+            Pixelate = parse.GetValue(_options.Pixelate) ?? request.Look.Pixelate,
+            FadeEdges = parse.GetValue(_options.FadeEdges) ?? request.Look.FadeEdges,
             Grain = parse.GetValue(_options.Grain) ?? request.Look.Grain,
             Vignette = parse.GetValue(_options.Vignette) || request.Look.Vignette,
             Mirror = parse.GetValue(_options.Mirror) || request.Look.Mirror,
+            FlipVertical = parse.GetValue(_options.FlipVertical) || request.Look.FlipVertical,
+            Attribution = parse.GetValue(_options.Attribution) ?? request.Look.Attribution,
+            AttributionPosition = parse.GetValue(_options.AttributionPosition)
+                ?? request.Look.AttributionPosition,
             ZoomEnd = parse.GetValue(_options.Zoom) ?? request.Look.ZoomEnd,
             Speed = parse.GetValue(_options.Speed) ?? request.Look.Speed,
             OverlayPath = parse.GetValue(_options.Overlay) ?? request.Look.OverlayPath,
@@ -341,6 +350,34 @@ internal sealed class ClipRequestBuilder
         if (request.Look.Speed <= 0)
         {
             throw new CliUsageException("--speed must be greater than zero.");
+        }
+
+        if (request.Look.Gamma is <= 0d or > 10d)
+        {
+            throw new CliUsageException("--gamma must be between 0 and 10.");
+        }
+
+        if (request.Look.Sharpen is < 0d or > 3d)
+        {
+            throw new CliUsageException("--sharpen must be between 0 and 3.");
+        }
+
+        if (request.Look.Pixelate is not 0d and (< 1d or > 16d))
+        {
+            throw new CliUsageException("--pixelate must be between 1 and 16.");
+        }
+
+        if (request.Look.FadeEdges < TimeSpan.Zero)
+        {
+            throw new CliUsageException("--fade-edges cannot be negative.");
+        }
+
+        if (request.Look.FadeEdges >= request.SpliceLength)
+        {
+            throw new CliUsageException(
+                $"--fade-edges ({request.Look.FadeEdges.TotalSeconds:0.##}s) must be shorter than "
+                + $"--splice ({request.SpliceLength.TotalSeconds:0.##}s), or every clip fades "
+                + "for its whole length.");
         }
 
         if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)

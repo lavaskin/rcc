@@ -95,6 +95,12 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             Look = look,
             SegmentDuration = segment.Duration,
             OverlayInputIndex = overlayIndex,
+
+            // Content-addressed, so the many parallel extractions of one render all resolve to
+            // the same file and write it at most once.
+            AttributionTextPath = look.HasAttribution
+                ? TextResources.Materialise(look.Attribution!.Trim())
+                : null,
         };
 
         var graph = _graphBuilder.Build(context, inputLabel: "0:v", outputLabel: "vout");
