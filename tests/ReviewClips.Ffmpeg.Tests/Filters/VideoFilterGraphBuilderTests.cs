@@ -61,11 +61,9 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void Graph_SetsSampleAspectRatioAfterScaling()
-    {
+    public void Graph_SetsSampleAspectRatioAfterScaling() =>
         // Without setsar the output inherits a non-square SAR and players squash it.
         Build(Context()).ShouldContain("setsar=1");
-    }
 
     // --- Tone mapping ------------------------------------------------------
 

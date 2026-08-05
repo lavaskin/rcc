@@ -82,7 +82,7 @@ public abstract class SegmentSelectorBase : ISegmentSelector
 
         var ordered = context.Options.Order == SegmentOrder.Shuffled
             ? Shuffle(picked, context.Random)
-            : picked.OrderBy(c => c.SourcePath, StringComparer.Ordinal).ThenBy(c => c.Start).ToList();
+            : [.. picked.OrderBy(c => c.SourcePath, StringComparer.Ordinal).ThenBy(c => c.Start)];
 
         return Materialise(ordered, context);
     }

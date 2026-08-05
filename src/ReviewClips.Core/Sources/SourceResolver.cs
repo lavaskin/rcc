@@ -101,12 +101,14 @@ public sealed class SourceResolver
             MatchCasing = MatchCasing.CaseInsensitive,
         };
 
-        return Directory
-            .EnumerateFiles(directory, pattern, options)
-            .Where(f => _extensions.Contains(Path.GetExtension(f)))
-            .OrderBy(f => f, StringComparer.Ordinal)
-            .Select(Path.GetFullPath)
-            .ToList();
+        return
+        [
+            .. Directory
+                .EnumerateFiles(directory, pattern, options)
+                .Where(f => _extensions.Contains(Path.GetExtension(f)))
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .Select(Path.GetFullPath),
+        ];
     }
 }
 

@@ -151,10 +151,12 @@ internal static class ValueParsers
             HelpName = helpName,
             AllowMultipleArgumentsPerToken = true,
             Arity = ArgumentArity.ZeroOrMore,
-            CustomParser = result => result.Tokens
-                .Select(t => t.Value.Trim())
-                .Where(v => v.Length > 0)
-                .ToList(),
+            CustomParser = result =>
+            [
+                .. result.Tokens
+                    .Select(t => t.Value.Trim())
+                    .Where(v => v.Length > 0),
+            ],
         };
 
     /// <summary>

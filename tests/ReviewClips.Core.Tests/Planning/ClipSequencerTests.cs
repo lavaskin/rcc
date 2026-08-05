@@ -6,14 +6,15 @@ namespace ReviewClips.Core.Tests.Planning;
 public class ClipSequencerTests
 {
     private static List<Segment> Pool(int count, double seconds = 5) =>
-        Enumerable.Range(0, count)
+    [
+        .. Enumerable.Range(0, count)
             .Select(i => new Segment
             {
                 SourcePath = "/movies/film.mkv",
                 Start = TimeSpan.FromSeconds(100 + (i * 60)),
                 Duration = TimeSpan.FromSeconds(seconds),
-            })
-            .ToList();
+            }),
+    ];
 
     [Fact]
     public void Fill_ReachesTheRequestedMaterialTotalExactly()

@@ -213,11 +213,11 @@ public sealed class JsonAnalysisCache : IAnalysisCache
                 SourceModifiedUnix = analysis.SourceModifiedUtc.ToUnixTimeSeconds(),
                 DurationSeconds = analysis.Duration.TotalSeconds,
                 AnalysedAtUnix = analysis.AnalysedAtUtc.ToUnixTimeSeconds(),
-                SceneCuts = analysis.SceneCuts.Select(c => Round(c.TotalSeconds)).ToArray(),
+                SceneCuts = [.. analysis.SceneCuts.Select(c => Round(c.TotalSeconds))],
                 BlackRanges = Flatten(analysis.BlackRanges),
                 FreezeRanges = Flatten(analysis.FreezeRanges),
-                MotionTimes = samples.Select(s => Round(s.AtSeconds)).ToArray(),
-                MotionValues = samples.Select(s => Math.Round(s.Mafd, 4)).ToArray(),
+                MotionTimes = [.. samples.Select(s => Round(s.AtSeconds))],
+                MotionValues = [.. samples.Select(s => Math.Round(s.Mafd, 4))],
             };
         }
 

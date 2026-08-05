@@ -20,8 +20,8 @@ public sealed class MotionCurve
     public MotionCurve(IEnumerable<MotionSample> samples)
     {
         var ordered = samples.OrderBy(s => s.AtSeconds).ToArray();
-        _times = ordered.Select(s => s.AtSeconds).ToArray();
-        _values = ordered.Select(s => s.Mafd).ToArray();
+        _times = [.. ordered.Select(s => s.AtSeconds)];
+        _values = [.. ordered.Select(s => s.Mafd)];
     }
 
     public static MotionCurve Empty { get; } = new([]);
