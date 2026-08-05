@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using ReviewClips.Core.Options;
@@ -12,21 +11,19 @@ namespace ReviewClips.Ffmpeg.Encoding;
 /// <para>
 /// Presence in <c>ffmpeg -encoders</c> is not sufficient: NVENC is compiled into most builds
 /// but fails at runtime without a suitable driver or GPU, or when all sessions are in use.
-/// A two-frame probe encode is the only reliable test, so that is what this does, once, cached.
+/// A two-frame probe encode is the only reliable test, which is what <see cref="IEncoderProbe"/>
+/// does, once, cached. <c>rcc doctor</c> shares that probe, so its report and this selection
+/// can never disagree.
 /// </para>
 /// </summary>
 public sealed class FfmpegEncoderSelector : IEncoderSelector
 {
-    private readonly FfmpegRunner _runner;
+    private readonly IEncoderProbe _probe;
     private readonly ILogger<FfmpegEncoderSelector> _logger;
 
-    // Plain concurrent map rather than a lock: a duplicate probe under a race is cheap and
-    // harmless, whereas caching a Task would let one caller's cancellation poison the result.
-    private readonly ConcurrentDictionary<string, bool> _probeResults = new(StringComparer.Ordinal);
-
-    public FfmpegEncoderSelector(FfmpegRunner runner, ILogger<FfmpegEncoderSelector> logger)
+    public FfmpegEncoderSelector(IEncoderProbe probe, ILogger<FfmpegEncoderSelector> logger)
     {
-        _runner = runner;
+        _probe = probe;
         _logger = logger;
     }
 
@@ -47,7 +44,7 @@ public sealed class FfmpegEncoderSelector : IEncoderSelector
             case EncoderPreference.Nvenc:
             {
                 var name = NvencName(options.Codec);
-                if (!await IsUsableAsync(name, cancellationToken))
+                if (!await _probe.IsUsableAsync(name, cancellationToken))
                 {
                     throw new FfmpegExecutionException(
                         $"'{name}' was requested but is not usable on this machine. "
@@ -61,7 +58,7 @@ public sealed class FfmpegEncoderSelector : IEncoderSelector
             default:
             {
                 var name = NvencName(options.Codec);
-                if (await IsUsableAsync(name, cancellationToken))
+                if (await _probe.IsUsableAsync(name, cancellationToken))
                 {
                     _logger.LogInformation("Using hardware encoder {Encoder}", name);
                     return Hardware(name, options);
@@ -104,43 +101,4 @@ public sealed class FfmpegEncoderSelector : IEncoderSelector
         ],
         ExtraArguments = [],
     };
-
-    private async Task<bool> IsUsableAsync(string encoder, CancellationToken cancellationToken)
-    {
-        if (_probeResults.TryGetValue(encoder, out var cached))
-        {
-            return cached;
-        }
-
-        // Encode a couple of synthetic frames and discard them.
-        string[] arguments =
-        [
-            "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi",
-            "-i", "testsrc2=size=256x144:rate=25",
-            "-frames:v", "2",
-            "-c:v", encoder,
-            "-f", "null", "-",
-        ];
-
-        bool usable;
-        try
-        {
-            var result = await _runner.RunFfmpegAsync(arguments, cancellationToken);
-            usable = result.Success;
-
-            if (!usable)
-            {
-                _logger.LogDebug("Probe for {Encoder} failed: {Error}", encoder, result.StandardError);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogDebug(ex, "Probe for {Encoder} threw", encoder);
-            usable = false;
-        }
-
-        _probeResults[encoder] = usable;
-        return usable;
-    }
 }

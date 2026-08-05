@@ -22,6 +22,7 @@ var root = new RootCommand(
     new BatchCommand().Build(services),
     new ScanCommand().Build(services),
     new ProbeCommand().Build(services),
+    new DoctorCommand().Build(services),
     ProfilesCommand.Build(services),
 };
 

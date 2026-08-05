@@ -6,6 +6,7 @@ using ReviewClips.Core.Pipeline;
 using ReviewClips.Core.Selection;
 using ReviewClips.Core.Sources;
 using ReviewClips.Ffmpeg.Analysis;
+using ReviewClips.Ffmpeg.Diagnostics;
 using ReviewClips.Ffmpeg.Encoding;
 using ReviewClips.Ffmpeg.Extraction;
 using ReviewClips.Ffmpeg.Filters;
@@ -58,6 +59,7 @@ internal static class CompositionRoot
         services.AddSingleton<FfmpegRunner>();
         services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
         services.AddSingleton<IMediaAnalyzer, FfmpegMediaAnalyzer>();
+        services.AddSingleton<IEncoderProbe, FfmpegEncoderProbe>();
         services.AddSingleton<IEncoderSelector, FfmpegEncoderSelector>();
         services.AddSingleton<ISegmentExtractor, FfmpegSegmentExtractor>();
 
@@ -70,6 +72,8 @@ internal static class CompositionRoot
         // general-purpose filter-graph one.
         services.AddSingleton<IStitcher, ConcatDemuxerStitcher>();
         services.AddSingleton<IStitcher, FilterGraphStitcher>();
+
+        services.AddSingleton<EnvironmentInspector>();
 
         services.AddSingleton(_ => VideoFilterGraphBuilder.CreateDefault());
         services.AddSingleton<ISegmentSelectorFactory>(_ => SegmentSelectorFactory.CreateDefault());

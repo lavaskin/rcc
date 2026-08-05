@@ -29,7 +29,7 @@ public class RoundTripTests
         var probe = new FfprobeMediaProbe(_fixture.Runner, NullLogger<FfprobeMediaProbe>.Instance);
         var info = await probe.ProbeAsync(_fixture.SimpleClip, TestContext.Current.CancellationToken);
 
-        var selector = new FfmpegEncoderSelector(_fixture.Runner, NullLogger<FfmpegEncoderSelector>.Instance);
+        var selector = new FfmpegEncoderSelector(_fixture.EncoderProbe, NullLogger<FfmpegEncoderSelector>.Instance);
 
         // Force software encoding so the test result does not depend on the GPU present.
         var encoder = await selector.SelectAsync(
@@ -301,7 +301,7 @@ public class EncoderSelectorTests
     public EncoderSelectorTests(FfmpegFixture fixture) => _fixture = fixture;
 
     private FfmpegEncoderSelector Selector() =>
-        new(_fixture.Runner, NullLogger<FfmpegEncoderSelector>.Instance);
+        new(_fixture.EncoderProbe, NullLogger<FfmpegEncoderSelector>.Instance);
 
     [Fact]
     public async Task Auto_AlwaysResolvesToSomethingUsable()

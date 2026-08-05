@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using ReviewClips.Ffmpeg.Encoding;
 using ReviewClips.Ffmpeg.Process;
 
 namespace ReviewClips.Ffmpeg.Tests.Integration;
@@ -14,9 +15,18 @@ public sealed class FfmpegFixture : IAsyncLifetime
 {
     private readonly List<string> _tempPaths = [];
 
+    public FfmpegFixture() =>
+        EncoderProbe = new FfmpegEncoderProbe(Runner, NullLogger<FfmpegEncoderProbe>.Instance);
+
     public FfmpegRunner Runner { get; } = new(
         new FfmpegToolset(),
         NullLogger<FfmpegRunner>.Instance);
+
+    /// <summary>
+    /// Shared across the whole collection so the probe encodes happen once, not once per test:
+    /// the probe caches its verdict per encoder for the lifetime of the instance.
+    /// </summary>
+    public FfmpegEncoderProbe EncoderProbe { get; }
 
     public bool Available { get; private set; }
 
