@@ -92,7 +92,23 @@ public sealed class RenderPipeline
                 : "--skip-chapter was given, but none of the sources carry chapter markers.");
         }
 
-        // 2. Plan the cadence up front so both selection and stitching agree on lengths.
+        // 2. When the render is to match an external track, its length replaces --duration.
+        // This has to land before cadence planning: the number and size of the splices are
+        // derived from the target, so deriving the target afterwards would size the render to
+        // the wrong number.
+        // The request itself is rebound rather than a local being threaded through, so that the
+        // plan, the summary and the manifest all report the duration the render actually has.
+        if (request.Audio is { MatchDuration: true, HasExternalTrack: true })
+        {
+            var matched = await ResolveAudioTargetAsync(request.Audio, cancellationToken);
+            request = request with { TargetDuration = matched };
+
+            observer.OnPhaseStarted(
+                RenderPhase.Probing,
+                $"matching audio: {matched.TotalSeconds:0.#}s");
+        }
+
+        // 3. Plan the cadence up front so both selection and stitching agree on lengths.
         // The target is the runtime of the finished file, so transition overlap is compensated
         // here rather than silently shortening the result.
         var durations = SplicePlanner.PlanForOutput(
@@ -110,7 +126,7 @@ public sealed class RenderPipeline
 
         var selector = _selectorFactory.Create(request.Selection.Strategy);
 
-        // 3. Analyse only when the strategy actually needs it.
+        // 4. Analyse only when the strategy actually needs it.
         var needsAnalysis = selector.RequiresAnalysis || request.Selection.RequiresAnalysis;
         var sources = new List<SourceMedia>(infos.Count);
 
@@ -130,7 +146,7 @@ public sealed class RenderPipeline
             sources.AddRange(infos.Select(i => new SourceMedia(i, null)));
         }
 
-        // 4. Select.
+        // 5. Select.
         observer.OnPhaseStarted(RenderPhase.Selecting, selector.Strategy.ToString());
         SelectionContext context = new()
         {
@@ -198,7 +214,7 @@ public sealed class RenderPipeline
                 + "Try lowering --min-gap, widening --skip-head/--skip-tail, or adding more sources.");
         }
 
-        // 5. Repeat the pool to fill the runtime when the distinct count is capped.
+        // 6. Repeat the pool to fill the runtime when the distinct count is capped.
         if (distinctWanted < durations.Count)
         {
             var pool = segments;
@@ -224,7 +240,7 @@ public sealed class RenderPipeline
             }
         }
 
-        // 6. Measure how much of the source this consumes.
+        // 7. Measure how much of the source this consumes.
         // Deliberately after the repeat-fill: the fill is what decouples runtime from footage
         // consumed, so measuring before it would report the pool rather than the render.
         var usage = SourceUsageGuard.Evaluate(
@@ -242,7 +258,7 @@ public sealed class RenderPipeline
             warnings.Add(usageMessage);
         }
 
-        // 7. Resolve the encoder.
+        // 8. Resolve the encoder.
         var encoder = await _encoderSelector.SelectAsync(request.Encoder, cancellationToken);
         if (request.Encoder.Preference == EncoderPreference.Auto && !encoder.IsHardware)
         {
@@ -332,7 +348,7 @@ public sealed class RenderPipeline
                             Look = request.Look,
                             Encoder = plan.Encoder,
                             EncoderOptions = request.Encoder,
-                            Mute = request.Mute,
+                            Mute = !request.Audio.UsesSegmentAudio,
                         },
                         progress: null,
                         ct);
@@ -357,7 +373,7 @@ public sealed class RenderPipeline
                 Format = request.Format,
                 Encoder = plan.Encoder,
                 EncoderOptions = request.Encoder,
-                Mute = request.Mute,
+                Audio = request.Audio,
                 WorkingDirectory = workDir,
             };
 
@@ -424,7 +440,7 @@ public sealed class RenderPipeline
                     Look = request.Look,
                     Encoder = plan.Encoder,
                     EncoderOptions = request.Encoder,
-                    Mute = request.Mute,
+                    Mute = !request.Audio.UsesSegmentAudio,
                 });
 
                 lines.Add("ffmpeg " + Quote(args));
@@ -442,12 +458,40 @@ public sealed class RenderPipeline
             Format = request.Format,
             Encoder = plan.Encoder,
             EncoderOptions = request.Encoder,
-            Mute = request.Mute,
+            Audio = request.Audio,
             WorkingDirectory = workDir,
         };
 
         lines.Add("ffmpeg " + Quote(ResolveStitcher(stitchRequest).DescribeArguments(stitchRequest)));
         return lines;
+    }
+
+    /// <summary>
+    /// Derives the render's target duration from the external track, less any start offset.
+    /// </summary>
+    private async Task<TimeSpan> ResolveAudioTargetAsync(
+        Options.AudioOptions audio,
+        CancellationToken cancellationToken)
+    {
+        var path = audio.ExternalPath!;
+        var total = await _probe.ProbeDurationAsync(path, cancellationToken);
+
+        if (total <= TimeSpan.Zero)
+        {
+            throw new RenderPlanningException(
+                $"Could not read a duration from '{Path.GetFileName(path)}', so --match-audio has nothing to match.");
+        }
+
+        var remaining = total - audio.Offset;
+
+        if (remaining <= TimeSpan.Zero)
+        {
+            throw new RenderPlanningException(
+                $"--audio-offset ({audio.Offset.TotalSeconds:0.#}s) is at or past the end of "
+                + $"'{Path.GetFileName(path)}' ({total.TotalSeconds:0.#}s), leaving no audio to use.");
+        }
+
+        return remaining;
     }
 
     private async Task<Analysis.MediaAnalysis?> GetOrCreateAnalysisAsync(

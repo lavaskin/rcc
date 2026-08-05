@@ -163,6 +163,8 @@ internal sealed class ClipRequestBuilder
             UseHardwareDecode = parse.GetValue(_options.HardwareDecode),
         };
 
+        var audio = ResolveAudio(parse, request.Audio);
+
         var duration = parse.GetValue(_options.TargetDuration) ?? request.TargetDuration;
         var splice = parse.GetValue(_options.Splice) ?? request.SpliceLength;
 
@@ -189,7 +191,7 @@ internal sealed class ClipRequestBuilder
             Transition = transition,
             Encoder = encoder,
             Analysis = analysis,
-            Mute = !parse.GetValue(_options.Audio) && request.Mute,
+            Audio = audio,
             Parallelism = parse.GetValue(_options.Parallelism) ?? request.Parallelism,
             IgnoreAnalysisCache = parse.GetValue(_options.NoCache),
             DryRun = parse.GetValue(_options.DryRun),
@@ -204,7 +206,97 @@ internal sealed class ClipRequestBuilder
         result = result with { OutputPath = Path.GetFullPath(output) };
 
         Validate(result);
+        ValidateAudio(parse, result);
         return result;
+    }
+
+    /// <summary>
+    /// Resolves the audio mode.
+    /// <para>
+    /// <c>--audio</c> is the one option here whose meaning depends on whether it was given a
+    /// value, so presence is read from the parse result rather than inferred from the value:
+    /// a null value means "bare <c>--audio</c>", which is not the same as absent.
+    /// </para>
+    /// </summary>
+    private AudioOptions ResolveAudio(ParseResult parse, AudioOptions inherited)
+    {
+        var audio = inherited;
+
+        if (parse.GetResult(_options.Audio) is not null)
+        {
+            var path = parse.GetValue(_options.Audio);
+
+            audio = string.IsNullOrWhiteSpace(path)
+                ? AudioOptions.FromSource()
+                : AudioOptions.FromFile(Path.GetFullPath(path));
+        }
+
+        return audio with
+        {
+            Offset = parse.GetValue(_options.AudioOffset) ?? audio.Offset,
+            Volume = parse.GetValue(_options.AudioVolume) ?? audio.Volume,
+            MatchDuration = parse.GetValue(_options.MatchAudio) || audio.MatchDuration,
+        };
+    }
+
+    /// <summary>
+    /// Rejects audio settings that cannot mean anything, before a render is planned.
+    /// <para>
+    /// Separate from <see cref="Validate"/> because these checks need to know what the user
+    /// actually typed, not just what the settings resolved to: <c>--match-audio</c> with an
+    /// explicit <c>--duration</c> is a contradiction, but the resolved request cannot tell a
+    /// typed duration from the default one.
+    /// </para>
+    /// </summary>
+    private void ValidateAudio(ParseResult parse, ClipRequest request)
+    {
+        var audio = request.Audio;
+
+        if (audio.HasExternalTrack && !File.Exists(audio.ExternalPath!))
+        {
+            throw new CliUsageException($"Audio file not found: {audio.ExternalPath}");
+        }
+
+        if (audio.Volume < 0d)
+        {
+            throw new CliUsageException("--audio-volume cannot be negative.");
+        }
+
+        if (audio.Offset < TimeSpan.Zero)
+        {
+            throw new CliUsageException("--audio-offset cannot be negative.");
+        }
+
+        if (audio.MatchDuration)
+        {
+            if (!audio.HasExternalTrack)
+            {
+                throw new CliUsageException(
+                    "--match-audio needs a track to match. Pass one with --audio <path>.");
+            }
+
+            if (parse.GetResult(_options.TargetDuration) is not null)
+            {
+                throw new CliUsageException(
+                    "--match-audio and --duration both set the length of the render. "
+                    + "Drop one: --match-audio takes the length from the track, "
+                    + "--duration states it outright.");
+            }
+        }
+
+        // These only ever apply to a muxed track, so silently ignoring them would hide a typo.
+        if (!audio.HasExternalTrack)
+        {
+            if (parse.GetResult(_options.AudioOffset) is not null)
+            {
+                throw new CliUsageException("--audio-offset only applies to --audio <path>.");
+            }
+
+            if (parse.GetResult(_options.AudioVolume) is not null)
+            {
+                throw new CliUsageException("--audio-volume only applies to --audio <path>.");
+            }
+        }
     }
 
     private static void Validate(ClipRequest request)

@@ -50,6 +50,12 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// <summary>A 10s MKV whose chapters are named only by number, as most rips are.</summary>
     public string UnnamedChapterClip { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// A 6s audio-only WAV. Audio-only on purpose: it is the case <see cref="MediaInfo"/>
+    /// cannot describe, and therefore the one <c>ProbeDurationAsync</c> exists for.
+    /// </summary>
+    public string AudioTrack { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         Directory = Path.Combine(Path.GetTempPath(), "rcc_tests_" + Guid.NewGuid().ToString("N")[..8]);
@@ -95,6 +101,8 @@ public sealed class FfmpegFixture : IAsyncLifetime
                 ("Chapter 01", 0, 5_000),
                 ("Chapter 02", 5_000, 10_000),
             ]);
+
+        AudioTrack = await SynthesiseAudioAsync("track.wav", 6);
     }
 
     public ValueTask DisposeAsync()
@@ -247,6 +255,45 @@ public sealed class FfmpegFixture : IAsyncLifetime
         }
 
         return path;
+    }
+
+    /// <summary>Synthesises an audio-only file with no video stream whatsoever.</summary>
+    private async Task<string> SynthesiseAudioAsync(string name, double seconds)
+    {
+        var path = Path.Combine(Directory, name);
+
+        var result = await Runner.RunFfmpegAsync(
+            [
+                "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "lavfi",
+                "-i", "sine=frequency=440:sample_rate=44100",
+                "-t", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                path,
+            ],
+            CancellationToken.None);
+
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"Could not synthesise {name}: {result.StandardError}");
+        }
+
+        return path;
+    }
+
+    /// <summary>Reports whether a file carries an audio stream, and at what duration.</summary>
+    public async Task<bool> HasAudioStreamAsync(string path)
+    {
+        var result = await Runner.RunFfprobeAsync(
+            [
+                "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                path,
+            ],
+            CancellationToken.None);
+
+        return result.StandardOutput.Contains("audio", StringComparison.Ordinal);
     }
 
     /// <summary>

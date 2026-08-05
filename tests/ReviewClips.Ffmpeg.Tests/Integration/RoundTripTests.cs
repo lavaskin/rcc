@@ -273,7 +273,8 @@ public class RoundTripTests
         TransitionKind kind,
         EncoderProfile encoder,
         double fade,
-        OutputFormat? format = null) => new()
+        OutputFormat? format = null,
+        AudioOptions? audio = null) => new()
         {
             SegmentPaths = paths,
             SegmentDurations = durations.Select(TimeSpan.FromSeconds).ToList(),
@@ -288,7 +289,7 @@ public class RoundTripTests
             Format = format ?? (OutputFormat.Youtube with { Width = 320, Height = 180 }),
             Encoder = encoder,
             EncoderOptions = new EncoderOptions { Preference = EncoderPreference.X264 },
-            Mute = true,
+            Audio = audio ?? AudioOptions.Muted,
             WorkingDirectory = Path.GetDirectoryName(output)!,
         };
 }

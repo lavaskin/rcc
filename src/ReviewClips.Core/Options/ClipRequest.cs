@@ -63,10 +63,17 @@ public sealed record ClipRequest
     public AnalysisSettings Analysis { get; init; } = new();
 
     /// <summary>
-    /// Strip audio. On by default: this footage sits under podcast narration, and a
-    /// second audio bed fighting your voice is worse than silence.
+    /// What the finished render should sound like. Muted by default: this footage sits under
+    /// podcast narration, and a second audio bed fighting your voice is worse than silence.
     /// </summary>
-    public bool Mute { get; init; } = true;
+    public AudioOptions Audio { get; init; } = new();
+
+    /// <summary>
+    /// Whether the render carries no audio at all. A passthrough over <see cref="Audio"/> so
+    /// the extractor, the stitchers and the manifest keep asking the one question they care
+    /// about without knowing where the audio would have come from.
+    /// </summary>
+    public bool Mute => Audio.IsMuted;
 
     /// <summary>Concurrent FFmpeg extraction processes.</summary>
     public int Parallelism { get; init; } = 4;

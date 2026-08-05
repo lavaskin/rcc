@@ -64,7 +64,7 @@ internal static class PlanPrinter
         table.AddRow(
             "Encoder",
             $"{plan.Encoder.VideoEncoder} ({(plan.Encoder.IsHardware ? "hardware" : "software")}), q={request.Encoder.Quality}");
-        table.AddRow("Audio", request.Mute ? "muted" : "kept");
+        table.AddRow("Audio", DescribeAudio(request.Audio));
 
         console.Write(table);
 
@@ -243,6 +243,38 @@ internal static class PlanPrinter
         }
 
         return parts.Count == 0 ? "untouched" : Markup.Escape(string.Join(", ", parts));
+    }
+
+    private static string DescribeAudio(AudioOptions audio)
+    {
+        if (audio.IsMuted)
+        {
+            return "muted";
+        }
+
+        if (!audio.HasExternalTrack)
+        {
+            return "source audio kept";
+        }
+
+        var parts = new List<string> { Path.GetFileName(audio.ExternalPath!) };
+
+        if (audio.Offset > TimeSpan.Zero)
+        {
+            parts.Add($"from {DurationSpec.Format(audio.Offset)}");
+        }
+
+        if (audio.AltersVolume)
+        {
+            parts.Add($"at {audio.Volume:0.##}x");
+        }
+
+        if (audio.MatchDuration)
+        {
+            parts.Add("length matched");
+        }
+
+        return Markup.Escape(string.Join(", ", parts));
     }
 
     private static string DescribeTransition(TransitionOptions transition)

@@ -275,9 +275,38 @@ internal sealed class GenerateOptions
         HelpName = "name",
     };
 
-    public Option<bool> Audio { get; } = new("--audio")
+    /// <summary>
+    /// Bare <c>--audio</c> keeps the source audio; <c>--audio track.wav</c> muxes that file
+    /// instead.
+    /// <para>
+    /// <c>ZeroOrOne</c> arity is what makes both spellings work from one option, and is the
+    /// reason external audio is not a breaking change. pi spells this <c>--audio MODE|FILE</c>
+    /// with <c>mute</c> as an explicit mode, which cannot be adopted without changing what an
+    /// existing bare <c>--audio</c> means.
+    /// </para>
+    /// </summary>
+    public Option<string?> Audio { get; } = new("--audio")
     {
-        Description = "Keep the source audio. Off by default, since this footage sits under narration.",
+        Description = "Keep the source audio, or give a file to mux in instead. "
+            + "Off by default, since this footage sits under narration.",
+        HelpName = "path",
+        Arity = ArgumentArity.ZeroOrOne,
+    };
+
+    public Option<TimeSpan?> AudioOffset { get; } = ValueParsers.Duration(
+        "--audio-offset",
+        "Start this far into the external audio track.");
+
+    public Option<double?> AudioVolume { get; } = new("--audio-volume")
+    {
+        Description = "Linear gain applied to the muxed audio; 1 leaves it untouched.",
+        HelpName = "multiplier",
+    };
+
+    public Option<bool> MatchAudio { get; } = new("--match-audio")
+    {
+        Description = "Take the render's length from the external audio track "
+            + "instead of from --duration.",
     };
 
     public Option<bool> HardwareDecode { get; } = new("--hwdecode")
@@ -398,6 +427,9 @@ internal sealed class GenerateOptions
         yield return Quality;
         yield return Preset;
         yield return Audio;
+        yield return AudioOffset;
+        yield return AudioVolume;
+        yield return MatchAudio;
         yield return HardwareDecode;
         yield return AnalysisFps;
         yield return SceneThreshold;

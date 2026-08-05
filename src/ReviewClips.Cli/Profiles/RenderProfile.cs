@@ -128,7 +128,12 @@ public sealed record RenderProfile
             Encoder = encoder,
             SpliceLength = Seconds(SpliceSeconds) ?? request.SpliceLength,
             SpliceJitter = Seconds(SpliceJitterSeconds) ?? request.SpliceJitter,
-            Mute = Mute ?? request.Mute,
+            Audio = Mute switch
+            {
+                true => AudioOptions.Muted,
+                false => AudioOptions.FromSource(),
+                null => request.Audio,
+            },
         };
     }
 

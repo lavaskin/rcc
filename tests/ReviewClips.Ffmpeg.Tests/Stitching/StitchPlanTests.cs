@@ -12,7 +12,7 @@ public class StitchPlanTests
         double transitionSeconds = 0.4,
         double fadeIn = 0,
         double fadeOut = 0,
-        bool mute = true) => new()
+        AudioOptions? audio = null) => new()
         {
             SegmentPaths = durations.Select((_, i) => $"/tmp/seg{i}.mp4").ToList(),
             SegmentDurations = durations.Select(TimeSpan.FromSeconds).ToList(),
@@ -33,7 +33,7 @@ public class StitchPlanTests
                 ExtraArguments = [],
             },
             EncoderOptions = new EncoderOptions(),
-            Mute = mute,
+            Audio = audio ?? AudioOptions.Muted,
             WorkingDirectory = "/tmp/work",
         };
 
@@ -149,7 +149,7 @@ public class StitchPlanTests
     [Fact]
     public void Graph_CrossfadesAudioWhenItIsKept()
     {
-        var graph = StitchPlan.Create(Request([5, 5, 5], mute: false))
+        var graph = StitchPlan.Create(Request([5, 5, 5], audio: AudioOptions.FromSource()))
             .BuildGraph(includeAudio: true);
 
         graph.ShouldContain("[0:a][1:a]acrossfade=d=0.4");
@@ -159,7 +159,7 @@ public class StitchPlanTests
     [Fact]
     public void Graph_ConcatenatesAudioWhenThereAreNoTransitions()
     {
-        var graph = StitchPlan.Create(Request([5, 5], TransitionKind.None, fadeIn: 0.5, mute: false))
+        var graph = StitchPlan.Create(Request([5, 5], TransitionKind.None, fadeIn: 0.5, audio: AudioOptions.FromSource()))
             .BuildGraph(includeAudio: true);
 
         graph.ShouldContain("concat=n=2:v=0:a=1[aout]");
@@ -207,7 +207,7 @@ public class StitcherSelectionTests
             ExtraArguments = [],
         },
         EncoderOptions = new EncoderOptions(),
-        Mute = true,
+        Audio = AudioOptions.Muted,
         WorkingDirectory = "/tmp/work",
     };
 

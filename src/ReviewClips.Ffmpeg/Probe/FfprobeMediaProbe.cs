@@ -117,6 +117,57 @@ public sealed class FfprobeMediaProbe : IMediaProbe
     }
 
     /// <summary>
+    /// Reads the container duration and nothing else.
+    /// <para>
+    /// <c>-show_format</c> only, deliberately: this exists to measure audio-only files, which
+    /// have no video stream for <see cref="ProbeAsync"/> to require, and the container duration
+    /// is the reliable field for them.
+    /// </para>
+    /// </summary>
+    public async Task<TimeSpan> ProbeDurationAsync(string path, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        var full = Path.GetFullPath(path);
+        if (!File.Exists(full))
+        {
+            throw new FileNotFoundException($"Media file not found: {full}", full);
+        }
+
+        string[] arguments =
+        [
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-print_format", "json",
+            full,
+        ];
+
+        var result = await _runner.RunFfprobeAsync(arguments, cancellationToken);
+        if (!result.Success)
+        {
+            throw new FfmpegExecutionException(
+                _runner.Toolset.FfprobePath,
+                arguments,
+                result.ExitCode,
+                result.StandardError);
+        }
+
+        FfprobeOutput? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<FfprobeOutput>(result.StandardOutput, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            throw new FfmpegExecutionException($"Could not parse ffprobe output for '{full}'.", ex);
+        }
+
+        return TryParseSeconds(parsed?.Format?.Duration, out var duration)
+            ? duration
+            : TimeSpan.Zero;
+    }
+
+    /// <summary>
     /// Turns raw ffprobe chapters into a sorted, non-degenerate list.
     /// <para>
     /// Entries are dropped rather than repaired when unusable: a chapter list is an optional

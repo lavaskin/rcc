@@ -64,8 +64,26 @@ public sealed class FilterGraphStitcher : IStitcher
             arguments.AddRange(["-i", path]);
         }
 
-        var includeAudio = !request.Mute;
-        var graph = plan.BuildGraph(includeAudio);
+        var audio = request.Audio;
+
+        // The external track goes in after every segment, so its index is the segment count.
+        var externalAudioIndex = default(int?);
+
+        if (audio.HasExternalTrack)
+        {
+            if (audio.Offset > TimeSpan.Zero)
+            {
+                arguments.AddRange(["-ss", Number(audio.Offset.TotalSeconds)]);
+            }
+
+            arguments.AddRange(["-i", audio.ExternalPath!]);
+            externalAudioIndex = request.SegmentPaths.Count;
+        }
+
+        // Only per-segment audio needs graph work. An external track is one continuous stream
+        // and is mapped straight through, so BuildAudioChains — which exists to acrossfade
+        // neighbouring clips into each other — has nothing to say about it.
+        var graph = plan.BuildGraph(request.UsesSegmentAudio);
 
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", $"[{StitchPlan.VideoOutputLabel}]"]);
@@ -75,7 +93,22 @@ public sealed class FilterGraphStitcher : IStitcher
         // them; this makes the guarantee hold for the output regardless of the inputs.
         arguments.AddRange(["-map_chapters", "-1"]);
 
-        if (includeAudio)
+        if (externalAudioIndex is { } audioIndex)
+        {
+            arguments.AddRange(["-map", $"{audioIndex}:a"]);
+            arguments.AddRange(["-c:a", "aac"]);
+            arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
+            arguments.AddRange(["-ac", "2"]);
+
+            if (audio.AltersVolume)
+            {
+                arguments.AddRange(["-filter:a", $"volume={Number(audio.Volume)}"]);
+            }
+
+            // Stops a track longer than the render from padding the output with still video.
+            arguments.Add("-shortest");
+        }
+        else if (request.UsesSegmentAudio)
         {
             arguments.AddRange(["-map", $"[{StitchPlan.AudioOutputLabel}]"]);
             arguments.AddRange(["-c:a", "aac"]);
