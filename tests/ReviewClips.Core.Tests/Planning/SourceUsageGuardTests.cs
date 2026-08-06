@@ -48,8 +48,8 @@ public class SourceUsageGuardTests
         report.Used.ShouldBe(TimeSpan.FromSeconds(10));
         report.Fraction.ShouldBe(0.05d, 0.0001d);
 
-        // Counting slots instead would have reported 50 seconds, i.e. 25%, and a strict run
-        // would have refused a render that touches a twentieth of the film.
+        // Counting slots would have reported 50s (25%), refusing a render that touches a
+        // twentieth of the film.
         report.ExceedsLimit.ShouldBeFalse();
     }
 
@@ -106,9 +106,8 @@ public class SourceUsageGuardTests
     [Fact]
     public void AnUnusedSourceDoesNotDiluteTheFigureTheLimitTests()
     {
-        // The loophole an aggregate measurement would leave wide open: 80% of one film, hidden
-        // behind nine untouched hours. Adding footage you do not use is not a way to use less
-        // of the footage you do.
+        // The loophole an aggregate measurement leaves open: 80% of one film hidden behind nine
+        // untouched hours.
         var segments = new[] { Clip(0, 80, "/a.mkv") };
 
         var report = SourceUsageGuard.Evaluate(
@@ -116,8 +115,7 @@ public class SourceUsageGuardTests
             [("/a.mkv", TimeSpan.FromSeconds(100)), ("/unused.mkv", TimeSpan.FromSeconds(9900))],
             SourceUsageGuard.DefaultLimit);
 
-        // The aggregate is diluted to under one per cent, which is exactly why it is not what
-        // the limit is tested against.
+        // Diluted to under one per cent, which is why the aggregate is not what the limit tests.
         report.Fraction.ShouldBeLessThan(0.01d);
 
         report.PeakFraction.ShouldBe(0.80d, 0.0001d);
@@ -269,9 +267,8 @@ public class SourceUsageGuardTests
     }
 
     /// <summary>
-    /// The union arithmetic, which used to live in <c>ClipSequencer.DistinctSourceDuration</c> as
-    /// well. Two implementations of one measurement is one too many when both feed the same
-    /// summary, so the plan now reads this and these came with it.
+    /// The union arithmetic, which also lived in <c>ClipSequencer.DistinctSourceDuration</c>.
+    /// Both fed the same summary, so this is now the only implementation.
     /// </summary>
     [Fact]
     public void RepeatedFootageIsCountedOnce()
@@ -307,10 +304,7 @@ public class SourceUsageGuardTests
             .ShouldBe(10d, 0.0001);
     }
 
-    /// <summary>
-    /// A retimed clip consumes more source than it plays back as, and this is the measurement
-    /// that answers how much of a work was used.
-    /// </summary>
+    /// <summary>A retimed clip consumes more source than it plays back as.</summary>
     [Fact]
     public void ARetimedClipIsMeasuredByTheFootageItReads()
     {

@@ -49,7 +49,7 @@ public sealed class MotionCurve
         return sum / (to - from);
     }
 
-    /// <summary>Peak motion across a range, used to reject shots containing violent cuts or flashes.</summary>
+    /// <summary>Peak motion across a range, or <c>null</c> when the curve has no samples there.</summary>
     public double? MaxOver(TimeRange range)
     {
         var (from, to) = IndexRange(range);

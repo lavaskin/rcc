@@ -5,11 +5,9 @@ namespace ReviewClips.Cli.Tests;
 /// <summary>
 /// <c>--fade-edges</c> against the clip length.
 /// <para>
-/// The bound has to be half the *shortest* clip, not half <c>--splice</c>. <c>--splice</c> is a
-/// midpoint that <c>--splice-jitter</c> varies around by up to a second by default, so checking
-/// the nominal figure let through values that were fine for an average clip and consumed a short
-/// one entirely — after which the stage silently corrected them and the printed summary went on
-/// reporting the figure that had been asked for.
+/// The bound has to be half the *shortest* clip, not half <c>--splice</c>: <c>--splice</c> is a
+/// midpoint that <c>--splice-jitter</c> varies around, so checking the nominal figure admits
+/// fades that consume a short clip entirely and are then silently clamped by the stage.
 /// </para>
 /// </summary>
 public class FadeEdgeValidationTests
@@ -20,7 +18,7 @@ public class FadeEdgeValidationTests
         using var harness = new RequestBuilderHarness();
 
         // --splice 4s with the default 1s jitter means clips as short as 3s, so the ceiling is
-        // 1.5s. 2s has to be refused here rather than clamped later inside the filter graph.
+        // 1.5s; 2s must be refused here rather than clamped later in the filter graph.
         var message = harness.Rejection("-d", "60s", "--splice", "4s", "--fade-edges", "2s");
 
         message.ShouldContain("--fade-edges");
@@ -40,8 +38,8 @@ public class FadeEdgeValidationTests
     }
 
     /// <summary>
-    /// With jitter off, every clip really is --splice long, so the old bound is the correct one
-    /// and the same value is allowed. The check tightens for jitter, not across the board.
+    /// With jitter off every clip really is --splice long, so the same value is allowed: the
+    /// check tightens for jitter, not across the board.
     /// </summary>
     [Fact]
     public void TheSameValueIsAllowedWhenJitterIsOff()
@@ -65,8 +63,8 @@ public class FadeEdgeValidationTests
     }
 
     /// <summary>
-    /// Larger jitter tightens the bound further, which is the property the old check lacked
-    /// entirely: it gave the same answer whatever the jitter was.
+    /// Larger jitter tightens the bound further; the old check gave the same answer whatever the
+    /// jitter was.
     /// </summary>
     [Fact]
     public void MoreJitterTightensTheBound()
@@ -83,9 +81,8 @@ public class FadeEdgeValidationTests
     }
 
     /// <summary>
-    /// A negative fade never reaches validation: the duration parser refuses it first. Asserted
-    /// so the guard in Validate is not mistaken for the thing doing this work — it is a backstop
-    /// for the profile path, which does not go through the parser.
+    /// A negative fade never reaches validation: the duration parser refuses it first. The guard
+    /// in Validate is a backstop for the profile path, which does not go through the parser.
     /// </summary>
     [Fact]
     public void ANegativeFadeIsRefusedByTheParser()
@@ -103,8 +100,8 @@ public class FadeEdgeValidationTests
         using var harness = new RequestBuilderHarness();
 
         // SplicePlanner clamps jitter so a clip can never fall under the floor; the bound has to
-        // agree, rather than computing 2 - 10 = -8s and rejecting every value including zero.
-        // The floor here is twice the default 0.4s transition, so 0.8s.
+        // agree rather than computing 2 - 10 = -8s and rejecting every value including zero. The
+        // floor here is twice the default 0.4s transition, so 0.8s.
         var message = harness.Rejection(
             "-d", "60s", "--splice", "2s", "--splice-jitter", "10s", "--fade-edges", "1s");
 
@@ -115,9 +112,8 @@ public class FadeEdgeValidationTests
 
     /// <summary>
     /// The floor tracks the transition, because <see cref="SplicePlanner"/> holds every clip to
-    /// twice it. A bound computed against the bare 0.75s minimum would admit fade values the
-    /// planner's own cadence can accommodate perfectly well, and — worse in the other direction —
-    /// would go stale the moment the transition changed.
+    /// twice it. A bound computed against the bare 0.75s minimum would go stale the moment the
+    /// transition changed.
     /// </summary>
     [Fact]
     public void TheBoundFollowsTheTransitionBecauseTheClipFloorDoes()

@@ -132,9 +132,8 @@ public class PlanForOutputTests
     }
 
     /// <summary>
-    /// Splice, jitter and transition combinations that between them exercise every regime the
-    /// compensation has: a transition far below half a clip, one close to it, one at exactly
-    /// half, and two that exceed the splice outright.
+    /// Every regime the compensation has: a transition far below half a clip, one close to it,
+    /// one at exactly half, and two that exceed the splice outright.
     /// </summary>
     public static TheoryData<double, double, double> Cadences =>
         new()
@@ -151,11 +150,9 @@ public class PlanForOutputTests
     /// <summary>
     /// The whole point of <see cref="SplicePlanner.PlanForOutput"/>, swept rather than sampled.
     /// <para>
-    /// This was five hand-picked tuples at one seed, and it passed throughout while
-    /// <c>--profile kenburns</c> was overshooting on one request in eight — the five happened to
-    /// be five that landed. The failure needs a particular leftover on the final clip, so it is a
-    /// property of the (target, seed) pair rather than of the settings, and no fixed list of
-    /// settings can be trusted to contain one. Hence the sweep: 7 cadences x 8 targets x 12 seeds.
+    /// The failure needs a particular leftover on the final clip, making it a property of the
+    /// (target, seed) pair rather than of the settings, so no fixed list of settings can be
+    /// trusted to contain one. Hence the sweep: 7 cadences x 8 targets x 12 seeds.
     /// </para>
     /// </summary>
     [Theory]
@@ -188,8 +185,8 @@ public class PlanForOutputTests
     }
 
     /// <summary>
-    /// The specific shape that used to break it: a leftover short enough to cap the overlap for
-    /// every join in the render. This rendered 36s for a 30s request.
+    /// The shape that used to break it: a leftover short enough to cap the overlap for every
+    /// join in the render.
     /// </summary>
     [Fact]
     public void DoesNotOvershootWhenTheTailClipWouldHaveCappedTheTransition()
@@ -208,12 +205,11 @@ public class PlanForOutputTests
     /// The mechanism behind the fix, asserted directly so a regression is diagnosed rather than
     /// merely detected.
     /// <para>
-    /// The overlap that actually gets applied must be a function of the settings alone. It used
-    /// to depend on the leftover that landed on the final clip, which is a function of the target
-    /// and the seed — and that is precisely the feedback that made the compensation loop cycle
-    /// instead of converge. Note the assertion is not "the clamp never binds": a transition wider
-    /// than half the splice still clamps, because no floor can make a clip longer than the splice
-    /// that was asked for. What matters is that it clamps to the same value every time.
+    /// The applied overlap must be a function of the settings alone. It used to depend on the
+    /// leftover landing on the final clip — a function of the target and the seed — which is the
+    /// feedback that made the compensation loop cycle instead of converge. The assertion is not
+    /// "the clamp never binds": a transition wider than half the splice still clamps, since no
+    /// floor can exceed the requested splice. What matters is that it clamps identically.
     /// </para>
     /// </summary>
     [Theory]

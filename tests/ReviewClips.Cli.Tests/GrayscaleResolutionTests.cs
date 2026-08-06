@@ -6,9 +6,8 @@ namespace ReviewClips.Cli.Tests;
 /// <c>--grayscale</c> against <c>--saturation</c> and <c>--no-grayscale</c>.
 /// <para>
 /// Two settings for one thing, so the request that reaches the renderer must hold only one of
-/// them. Anything that reports on the look reads the resolved value, and if the contradiction
-/// survived into the request the summary and the filter graph would be free to settle it
-/// differently from each other.
+/// them: if the contradiction survived, the printed summary and the filter graph would be free
+/// to settle it differently from each other.
 /// </para>
 /// </summary>
 public class GrayscaleResolutionTests
@@ -61,10 +60,9 @@ public class GrayscaleResolutionTests
     }
 
     /// <summary>
-    /// Both forms at once is refused, as it is for every other <c>--no-</c> pair. It stayed
-    /// refused when <c>--saturation</c> is also given: that settles what the saturation should
-    /// be, but it does not make "grayscale and not grayscale" a coherent thing to have typed, and
-    /// this pair being the one exception would be arbitrary.
+    /// Both forms at once is refused, as for every other <c>--no-</c> pair, and stays refused
+    /// when <c>--saturation</c> settles the value anyway: this pair being the one exception would
+    /// be arbitrary.
     /// </summary>
     [Theory]
     [InlineData()]

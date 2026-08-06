@@ -4,13 +4,9 @@ using ReviewClips.Core.Pipeline;
 namespace ReviewClips.Core.Tests.Pipeline;
 
 /// <summary>
-/// A cue-driven render has to last as long as it was asked to.
-/// <para>
-/// The clip count for this strategy comes from the cue list rather than from the splice cadence,
-/// which makes the transition-overlap compensation a different sum. Getting that wrong is not
-/// visible in the clip list — every clip looks reasonable — it only shows up in the length of
-/// the finished file, which is exactly the number nobody re-measures.
-/// </para>
+/// A cue-driven render has to last as long as it was asked to. The clip count comes from the cue
+/// list rather than the splice cadence, which makes the transition-overlap compensation a
+/// different sum; getting it wrong shows up only in the length of the finished file.
 /// </summary>
 public class CueDurationTests
 {
@@ -31,8 +27,8 @@ public class CueDurationTests
                 Strategy = SelectionStrategy.Cues,
                 Cues = [.. cueSeconds.Select(TimeSpan.FromSeconds)],
 
-                // Snapping moves a cue's start, never its length, and needs analysis the harness
-                // does not produce. Off, so the arithmetic under test is the only variable.
+                // Snapping needs analysis the harness does not produce, and moves a cue's start
+                // rather than its length. Off, so the arithmetic is the only variable.
                 SnapCuesToScene = false,
             },
             Transition = new TransitionOptions
@@ -62,9 +58,8 @@ public class CueDurationTests
     }
 
     /// <summary>
-    /// The specific regression: two cues over five minutes used to be handed a budget planned
-    /// for sixty-odd five-second clips, and paid back only one of the sixty transitions it had
-    /// been charged for. The result overshot by more than twenty-five seconds.
+    /// The regression: two cues over five minutes were handed a budget planned for sixty-odd
+    /// five-second clips, then paid back only one of the sixty transitions charged for.
     /// </summary>
     [Fact]
     public async Task TwoCuesOverALongRenderDoNotOvershoot()
@@ -92,9 +87,8 @@ public class CueDurationTests
     }
 
     /// <summary>
-    /// With a cap the runtime is filled by repetition instead of by longer clips, which is a
-    /// different code path through <c>ClipSequencer</c>. It was already correct; pinned so the
-    /// fix to the uncapped path cannot quietly break it.
+    /// With a cap the runtime is filled by repetition rather than longer clips, a separate path
+    /// through <c>ClipSequencer</c>. Pinned so the uncapped fix cannot quietly break it.
     /// </summary>
     [Fact]
     public async Task CappedCuesStillLandOnTheTarget()
@@ -110,9 +104,8 @@ public class CueDurationTests
     }
 
     /// <summary>
-    /// A cue near the end of a file gets a shorter clip than its share, because there is no more
-    /// footage. The render is then shorter than requested — unavoidable, but it must not be
-    /// silently reported as if it were not.
+    /// A cue near the end of a file gets less than its share because there is no more footage.
+    /// The resulting shortfall is unavoidable, but must not be reported as if it were not.
     /// </summary>
     [Fact]
     public async Task ACueTooCloseToTheEndShortensTheRenderRatherThanRunningPastIt()

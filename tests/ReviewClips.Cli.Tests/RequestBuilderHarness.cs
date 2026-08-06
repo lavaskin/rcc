@@ -10,9 +10,9 @@ namespace ReviewClips.Cli.Tests;
 /// Parses a command line the way <c>rcc generate</c> does and hands back the resolved request.
 /// <para>
 /// Goes through the real <see cref="GenerateOptions"/> and the real parser rather than
-/// constructing a <see cref="ClipRequest"/> directly, so tests cover the path a user's arguments
-/// actually take: option binding, then profile layering, then validation. The interesting
-/// behaviour is in the joins between those three, and a hand-built request has no joins.
+/// constructing a <see cref="ClipRequest"/> directly, so tests cover option binding, then profile
+/// layering, then validation. The interesting behaviour is in the joins between those three, and
+/// a hand-built request has no joins.
 /// </para>
 /// </summary>
 internal sealed class RequestBuilderHarness : IDisposable
@@ -44,9 +44,7 @@ internal sealed class RequestBuilderHarness : IDisposable
     /// <summary>A path inside the harness's scratch directory, for tests that need one.</summary>
     public string PathFor(string name) => Path.Combine(_directory, name);
 
-    /// <summary>
-    /// Builds a request from the given arguments, with <c>-i</c> supplied automatically.
-    /// </summary>
+    /// <summary>Builds a request from the given arguments, with <c>-i</c> supplied automatically.</summary>
     public ClipRequest Build(params string[] arguments)
     {
         var options = new GenerateOptions();
@@ -55,9 +53,8 @@ internal sealed class RequestBuilderHarness : IDisposable
 
         var parse = command.Parse(["-i", SourcePath, .. arguments]);
 
-        // A binder error is a different failure from a validation error and must not be mistaken
-        // for one: without this, a test asserting "this is rejected" would pass just as happily
-        // when the option name had a typo in it.
+        // A binder error is not a validation error: without this, a test asserting "this is
+        // rejected" would pass just as happily when the option name had a typo in it.
         if (parse.Errors.Count > 0)
         {
             throw new ParseFailedException(string.Join("; ", parse.Errors.Select(e => e.Message)));

@@ -4,13 +4,9 @@ using Spectre.Console;
 namespace ReviewClips.Cli.Presentation;
 
 /// <summary>
-/// Renders pipeline progress with Spectre.
-/// <para>
-/// Deliberately line-based rather than a live-updating display: the pipeline runs several
-/// FFmpeg processes concurrently, and a live table competing with their output produces a
-/// mess in redirected or non-interactive terminals. Discrete status lines behave correctly
-/// when piped to a file or a CI log.
-/// </para>
+/// Renders pipeline progress with Spectre. Line-based rather than a live-updating display: the
+/// pipeline runs several FFmpeg processes concurrently, and a live table competing with their
+/// output garbles a redirected or non-interactive terminal, such as a file or a CI log.
 /// </summary>
 internal sealed class ConsoleRenderObserver : IRenderObserver
 {

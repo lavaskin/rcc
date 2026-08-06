@@ -9,10 +9,9 @@ namespace ReviewClips.Ffmpeg.Stitching;
 /// <summary>
 /// Joins segments with the concat demuxer and a stream copy.
 /// <para>
-/// This is the fast path: no re-encoding at all, so it finishes in well under a second
-/// regardless of runtime. It only applies when there are no transitions and no fades, since
-/// both require pixels to be touched. It is safe here because the extractor already normalised
-/// every segment to identical codec parameters.
+/// The fast path: no re-encoding at all. Applies only when there are no transitions and no
+/// fades, since both require pixels to be touched, and is safe because the extractor already
+/// normalised every segment to identical codec parameters.
 /// </para>
 /// </summary>
 public sealed class ConcatDemuxerStitcher : IStitcher
@@ -85,13 +84,10 @@ public sealed class ConcatDemuxerStitcher : IStitcher
 
             arguments.AddRange(["-i", audio.ExternalPath!]);
 
-            // The whole point of this stitcher survives muxing: the video is still copied, never
-            // re-encoded, so a transition-free render stays a sub-second operation no matter how
-            // long it is. Only the audio is touched.
+            // The video is still copied, never re-encoded; only the audio is touched.
             //
-            // ':a:0' rather than ':a'. The bare form is a stream specifier matching every audio
-            // stream in the input, so a track carrying commentary or several language dubs would
-            // contribute all of them, each re-encoded at -b:a.
+            // ':a:0' not ':a': the bare specifier matches every audio stream in the input, so a
+            // track with commentary or several dubs would contribute all of them, each at -b:a.
             arguments.AddRange(["-map", "0:v", "-map", "1:a:0"]);
             arguments.AddRange(["-c:v", "copy"]);
             arguments.AddRange(["-c:a", "aac"]);
@@ -106,9 +102,8 @@ public sealed class ConcatDemuxerStitcher : IStitcher
                 audioFilters.Add($"volume={Number(audio.Volume)}");
             }
 
-            // Pads the track with silence so it can never be the shorter of the two streams,
-            // which would otherwise make -shortest below end the file wherever the audio ran out.
-            // The render's length is what was asked for; the track is a decoration on it.
+            // Pads with silence so the track can never be the shorter stream, which would make
+            // -shortest below end the file wherever the audio ran out.
             audioFilters.Add("apad");
 
             arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
@@ -127,8 +122,8 @@ public sealed class ConcatDemuxerStitcher : IStitcher
             }
         }
 
-        // The concat demuxer happens not to forward chapters today, but the output must not
-        // depend on that: state it, so both stitchers make the same guarantee.
+        // The concat demuxer happens not to forward chapters today; stated anyway so the output
+        // does not depend on that and both stitchers make the same guarantee.
         arguments.AddRange(["-map_chapters", "-1"]);
         arguments.AddRange(["-movflags", "+faststart"]);
         arguments.Add(request.OutputPath);

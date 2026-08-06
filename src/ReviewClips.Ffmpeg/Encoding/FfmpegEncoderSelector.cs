@@ -7,14 +7,9 @@ using ReviewClips.Ffmpeg.Process;
 namespace ReviewClips.Ffmpeg.Encoding;
 
 /// <summary>
-/// Chooses a video encoder by actually trying it.
-/// <para>
-/// Presence in <c>ffmpeg -encoders</c> is not sufficient: NVENC is compiled into most builds
-/// but fails at runtime without a suitable driver or GPU, or when all sessions are in use.
-/// A two-frame probe encode is the only reliable test, which is what <see cref="IEncoderProbe"/>
-/// does, once, cached. <c>rcc doctor</c> shares that probe, so its report and this selection
-/// can never disagree.
-/// </para>
+/// Chooses a video encoder by actually trying it: a two-frame probe encode via
+/// <see cref="IEncoderProbe"/>, once, cached. See that interface for why the
+/// <c>ffmpeg -encoders</c> listing cannot be trusted.
 /// </summary>
 public sealed class FfmpegEncoderSelector : IEncoderSelector
 {

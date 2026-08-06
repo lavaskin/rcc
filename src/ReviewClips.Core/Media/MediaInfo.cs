@@ -30,8 +30,8 @@ public sealed record MediaInfo
     public required bool HasAudio { get; init; }
 
     /// <summary>
-    /// Container chapter markers in file order, or empty when the source carries none.
-    /// Never <c>null</c>, so callers need not special-case unchaptered files.
+    /// Container chapter markers in file order; empty, never <c>null</c>, when the source
+    /// carries none.
     /// </summary>
     public IReadOnlyList<Chapter> Chapters { get; init; } = [];
 
@@ -64,9 +64,9 @@ public sealed record MediaInfo
     public bool HasChapters => Chapters.Count > 0;
 
     /// <summary>
-    /// True when at least one chapter is named something other than its own number. Chapters
-    /// that only say <c>Chapter 07</c> are present in most disc rips and cannot be matched
-    /// against, so "has chapters" alone is not enough to know whether they are of any use.
+    /// True when at least one chapter is named something other than its own number. Numbered
+    /// titles cannot be matched against, so <see cref="HasChapters"/> alone says nothing about
+    /// whether the chapters are usable.
     /// </summary>
     public bool HasNamedChapters => Chapters.Any(c => c.MeaningfulTitle is not null);
 

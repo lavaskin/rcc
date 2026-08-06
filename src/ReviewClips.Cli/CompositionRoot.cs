@@ -67,9 +67,8 @@ internal static class CompositionRoot
             configuration["Cache:Directory"],
             provider.GetRequiredService<ILogger<JsonAnalysisCache>>()));
 
-        // Registration order is significant: the pipeline picks the first stitcher that can
-        // handle a request, so the stream-copy fast path must be offered before the
-        // general-purpose filter-graph one.
+        // Registration order is significant: the pipeline picks the first stitcher that can handle
+        // a request, so the stream-copy fast path must be offered before the filter-graph one.
         services.AddSingleton<IStitcher, ConcatDemuxerStitcher>();
         services.AddSingleton<IStitcher, FilterGraphStitcher>();
 

@@ -9,12 +9,9 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Tests.Pipeline;
 
 /// <summary>
-/// Drives <see cref="RenderPipeline"/> against stub collaborators.
-/// <para>
-/// Planning is where every policy decision in the tool is made, and none of those decisions
-/// need FFmpeg to be present in order to be wrong. Real selection strategies and real planners
-/// are used throughout; only the four things that would shell out are replaced.
-/// </para>
+/// Drives <see cref="RenderPipeline"/> against stub collaborators. Planning is where every policy
+/// decision is made and none of them need FFmpeg to be wrong, so real selection strategies and
+/// real planners are used throughout; only the collaborators that would shell out are replaced.
 /// </summary>
 internal sealed class PipelineHarness
 {

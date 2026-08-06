@@ -5,12 +5,8 @@ using ReviewClips.Core.Pipeline;
 namespace ReviewClips.Cli.Presentation;
 
 /// <summary>
-/// A record of exactly what a render used.
-/// <para>
-/// Two purposes. It makes a render reproducible, since the seed plus the settings regenerate
-/// the identical output. And it is an audit trail: if a clip is ever challenged, you have a
-/// precise record of which source, which timestamps, and how much of each title was used.
-/// </para>
+/// A record of exactly what a render used. The seed plus the settings regenerate the identical
+/// output, and the per-source timings are an audit trail for a clip that is later challenged.
 /// </summary>
 internal sealed record RenderManifest
 {
@@ -58,16 +54,15 @@ internal sealed record RenderManifest
     public double AvailableSourceSeconds { get; init; }
 
     /// <summary>
-    /// <c>distinctSourceSeconds / availableSourceSeconds</c>. The share of the supplied footage
-    /// this render consumes, with repeats and overlaps counted once.
+    /// <c>distinctSourceSeconds / availableSourceSeconds</c>: the share of the supplied footage
+    /// consumed, counting repeats and overlaps once.
     /// </summary>
     [JsonPropertyName("sourceUsageFraction")]
     public double SourceUsageFraction { get; init; }
 
     /// <summary>
-    /// The largest share taken from any single source, which is what the guardrail tests. This
-    /// is the figure that matters for an audit: the aggregate above is diluted by every source
-    /// the render barely touched.
+    /// Largest share taken from any single source, which is what the guardrail tests. The
+    /// aggregate above is diluted by every source the render barely touched.
     /// </summary>
     [JsonPropertyName("peakSourceUsageFraction")]
     public double PeakSourceUsageFraction { get; init; }
@@ -82,13 +77,11 @@ internal sealed record RenderManifest
     public bool Muted { get; init; }
 
     /// <summary>
-    /// What the render sounds like, when it makes a sound. Null for a muted render, which is the
-    /// default and which <c>muted</c> already describes in full.
+    /// What the render sounds like; null for a muted render, which <c>muted</c> already covers.
     /// <para>
-    /// <c>muted: false</c> on its own does not distinguish "kept each clip's own audio" from
-    /// "muxed a file", and says nothing about which file or at what offset and gain. Both are
-    /// needed for the manifest's two purposes: reproducing the render, and explaining a
-    /// <c>targetSeconds</c> that came from the audio rather than from <c>--duration</c>.
+    /// <c>muted: false</c> alone distinguishes neither "kept each clip's own audio" from "muxed a
+    /// file", nor which file at what offset and gain. Both are needed to reproduce the render and
+    /// to explain a <c>targetSeconds</c> that came from the audio rather than <c>--duration</c>.
     /// </para>
     /// </summary>
     [JsonPropertyName("audio")]
@@ -117,9 +110,8 @@ internal sealed record RenderManifest
             .GroupBy(s => s.SourcePath, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => (Clips: g.Count(), Seconds: g.Sum(s => s.Duration.TotalSeconds)), StringComparer.Ordinal);
 
-        // Driven from the usage report rather than from the segments, so the per-source rows and
-        // the guardrail are the same measurement. A source that contributed nothing still gets a
-        // row: "we supplied this and took none of it" is part of the record.
+        // Driven from the usage report rather than the segments, so the per-source rows and the
+        // guardrail are the same measurement. A source that contributed nothing still gets a row.
         var usage = plan.SourceUsage.Sources
             .Select(entry =>
             {
@@ -201,17 +193,14 @@ internal sealed record RenderManifest
         [JsonPropertyName("volume")]
         public double? Volume { get; init; }
 
-        /// <summary>
-        /// True when the render's length came from the track rather than from <c>--duration</c>.
-        /// This is what accounts for a <c>targetSeconds</c> that appears in no command line.
-        /// </summary>
+        /// <summary>True when the render's length came from the track rather than <c>--duration</c>.</summary>
         [JsonPropertyName("matchedDuration")]
         public bool? MatchedDuration { get; init; }
 
         /// <summary>
         /// Null for a muted render. Both this and <c>muted</c> read
-        /// <see cref="Core.Options.AudioOptions.IsMuted"/>, so they cannot disagree — including on
-        /// the <c>External</c>-without-a-path case, which that property counts as muted.
+        /// <see cref="Core.Options.AudioOptions.IsMuted"/>, so they cannot disagree, including on
+        /// <c>External</c> without a path, which that property counts as muted.
         /// </summary>
         public static ManifestAudio? For(Core.Options.AudioOptions audio)
         {

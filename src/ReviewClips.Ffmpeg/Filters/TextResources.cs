@@ -7,25 +7,16 @@ namespace ReviewClips.Ffmpeg.Filters;
 /// <summary>
 /// Materializes burned-in text as a file for <c>drawtext</c>'s <c>textfile=</c> option.
 /// <para>
-/// Named by a hash of its own contents, which makes the whole thing free of coordination: every
-/// parallel extraction asks for the same text and gets the same path, a re-run reuses the file
-/// rather than rewriting it, and two renders with different captions cannot collide. Writes go
-/// via a unique temporary name and are then moved into place, so a reader can never observe a
-/// half-written file.
+/// Named by a hash of its own contents, which makes the whole thing free of coordination:
+/// parallel extractions of the same text share a path, a re-run reuses the file, and different
+/// captions cannot collide. Writes go via a unique temporary name and are then moved into place,
+/// so a reader can never observe a half-written file. <see cref="Sweep"/> bounds the growth.
 /// </para>
 /// <para>
-/// Files live under <see cref="ScratchPaths.Text"/>, which is per-user and owner-only. On a
-/// shared machine a directory anybody can write to is a path anybody can plant a file in, and
-/// since the fast path below trusts an existing file by name and length alone, that would let
-/// somebody else choose what your credit line says. Note the name is deliberately predictable —
-/// reuse between runs depends on it — so the protection is the directory's permissions, not its
-/// name.
-/// </para>
-/// <para>
-/// <see cref="Sweep"/> is what keeps the directory from growing without bound. It runs after any
-/// render that burned in text, and from <c>rcc doctor --clear-cache</c>. Both matter: the first
-/// is what makes it automatic, and the second is what reaches a directory left behind by a
-/// version that did not do the first.
+/// Files live under <see cref="ScratchPaths.Text"/>, which is per-user and owner-only. The name
+/// is deliberately predictable — reuse between runs depends on it — and the fast path below
+/// trusts an existing file by name and length alone, so the directory's permissions are the only
+/// thing stopping somebody else choosing what your credit line says.
 /// </para>
 /// </summary>
 public static class TextResources
@@ -49,16 +40,14 @@ public static class TextResources
         // UTF-8 without a BOM: drawtext renders the byte order mark as a visible glyph.
         var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
 
-        // Length is the cheap half of the content check, and it catches the case the bare
-        // File.Exists misses: a run killed mid-write, or a disk that filled, leaving a
-        // truncated file that this would otherwise reuse silently for ever.
+        // Length is the cheap half of a content check, and catches what a bare File.Exists
+        // misses: a truncated file from a killed write, reused silently for ever.
         if (IsIntact(path, bytes.Length))
         {
-            // Reuse counts as use. Without this the timestamp records when the caption was first
-            // written, so a credit line used in every render for a year would still be swept
-            // seven days in -- and, worse, could be swept out from under a render that is using
-            // it right now. Touching it makes the age mean "unused for MaxAge", which is both
-            // what Sweep documents and what makes it safe to run concurrently with a render.
+            // Reuse counts as use: without the touch the timestamp records first write, so a
+            // caption used in every render would still be swept -- possibly out from under a
+            // render using it. Touching makes the age mean "unused for MaxAge", which is what
+            // makes Sweep safe to run concurrently with a render.
             TryTouch(path);
             return path;
         }
@@ -74,12 +63,10 @@ public static class TextResources
         {
             TryDelete(staging);
 
-            // Losing the race to another process is benign: the name is a hash of the content,
-            // so identical bytes are the only thing the winner could have written. Anything
-            // else — a full disk, a read-only temp directory, a denied write — leaves no file
-            // at all, and returning the path regardless would hand drawtext a textfile= that
-            // does not exist. That surfaces much later as an opaque mid-render FFmpeg failure,
-            // so the cause is reported here instead.
+            // Losing the race is benign: the name is a hash of the content, so the winner wrote
+            // identical bytes. Anything else — full disk, read-only temp, denied write — leaves
+            // no file, and returning the path regardless hands drawtext a textfile= that does
+            // not exist, surfacing much later as an opaque mid-render FFmpeg failure.
             if (!IsIntact(path, bytes.Length))
             {
                 throw new IOException(
@@ -92,12 +79,12 @@ public static class TextResources
     }
 
     /// <summary>
-    /// Deletes text files not touched for <see cref="MaxAge"/>.
+    /// Deletes text files not touched for <see cref="MaxAge"/>. Called from
+    /// <see cref="SweepOnce"/> and from <c>rcc doctor --clear-cache</c>.
     /// <para>
-    /// These are tiny, but nothing else ever removes them: unlike the pipeline's working
-    /// directory they outlive the render on purpose, so that the next one reuses them. Age is
-    /// the only safe criterion, since a file in use by a concurrent render looks exactly like
-    /// one left behind by a finished one.
+    /// Unlike the pipeline's working directory these outlive the render on purpose, so the next
+    /// one reuses them, and nothing else ever removes them. Age is the only safe criterion: a
+    /// file in use by a concurrent render looks exactly like one left behind by a finished one.
     /// </para>
     /// </summary>
     public static int Sweep()
@@ -132,17 +119,13 @@ public static class TextResources
     }
 
     /// <summary>
-    /// Sweeps in the background, at most once per process.
+    /// Sweeps in the background, at most once per process. Called from
+    /// <see cref="Materialize"/> so tidying happens without anybody having to remember it.
     /// <para>
-    /// Called from <see cref="Materialize"/> so tidying happens without anybody having to
-    /// remember it: these files outlive the render on purpose, nothing else removes them, and
-    /// leaving it to <c>doctor --clear-cache</c> meant in practice that it never ran at all.
-    /// </para>
-    /// <para>
-    /// Fire-and-forget, and failure is ignored. Housekeeping must not delay a render, and a
-    /// render must not fail because housekeeping could not. Safe to run alongside the extraction
-    /// that triggered it because <see cref="Materialize"/> touches every file it reuses, so
-    /// nothing in use is old enough to be swept.
+    /// Fire-and-forget, and failure is ignored: housekeeping must not delay a render, and a
+    /// render must not fail because housekeeping could not. Safe alongside the extraction that
+    /// triggered it because <see cref="Materialize"/> touches every file it reuses, so nothing
+    /// in use is old enough to be swept.
     /// </para>
     /// </summary>
     private static void SweepOnce()
@@ -202,8 +185,8 @@ public static class TextResources
     }
 
     /// <summary>
-    /// Marks a file as used. Best-effort: a filesystem that refuses the update costs nothing
-    /// worse than an early sweep, which rewrites the file next time it is needed.
+    /// Marks a file as used. Best-effort: a filesystem that refuses the update costs only an
+    /// early sweep, and the file is rewritten next time it is needed.
     /// </summary>
     private static void TryTouch(string path)
     {

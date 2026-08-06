@@ -8,10 +8,7 @@ namespace ReviewClips.Ffmpeg.Stitching;
 
 /// <summary>
 /// Joins segments through a filter graph, applying cross-transitions and top-level fades.
-/// <para>
-/// This costs one re-encode pass, but the inputs are already small and normalised, so on a
-/// hardware encoder it is quick. Handles anything the stream-copy path cannot.
-/// </para>
+/// Costs one re-encode pass; handles anything the stream-copy path cannot.
 /// </summary>
 public sealed class FilterGraphStitcher : IStitcher
 {
@@ -81,31 +78,28 @@ public sealed class FilterGraphStitcher : IStitcher
             externalAudioIndex = request.SegmentPaths.Count;
         }
 
-        // Only per-segment audio needs graph work. An external track is one continuous stream
-        // and is mapped straight through, so BuildAudioChains — which exists to acrossfade
-        // neighbouring clips into each other — has nothing to say about it.
+        // Only per-segment audio needs graph work: an external track is one continuous stream,
+        // mapped straight through, with no neighbouring clips to acrossfade into.
         var graph = plan.BuildGraph(request.UsesSegmentAudio);
 
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", $"[{StitchPlan.VideoOutputLabel}]"]);
 
-        // Without this FFmpeg copies chapters from the first input, so the finished file would
-        // inherit whatever markers segment one happened to carry. The extractor already strips
-        // them; this makes the guarantee hold for the output regardless of the inputs.
+        // Without this FFmpeg copies chapters from the first input. The extractor already strips
+        // them; this holds the guarantee for the output regardless of the inputs.
         arguments.AddRange(["-map_chapters", "-1"]);
 
         if (externalAudioIndex is { } audioIndex)
         {
-            // ':a:0' rather than ':a'. The bare form is a stream specifier matching every audio
-            // stream in the input, so a track carrying commentary or several language dubs would
-            // contribute all of them, each re-encoded at -b:a.
+            // ':a:0' not ':a': the bare specifier matches every audio stream in the input, so a
+            // track with commentary or several dubs would contribute all of them, each at -b:a.
             arguments.AddRange(["-map", $"{audioIndex}:a:0"]);
             arguments.AddRange(["-c:a", "aac"]);
             arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
             arguments.AddRange(["-ac", "2"]);
 
-            // A simple -filter:a rather than a filter_complex branch: the track is mapped
-            // straight from an input and never meets the segment graph, so it needs no labels.
+            // -filter:a rather than a filter_complex branch: the track is mapped straight from
+            // an input and never meets the segment graph, so it needs no labels.
             var audioFilters = new List<string>(3);
 
             if (audio.AltersVolume)
@@ -113,15 +107,12 @@ public sealed class FilterGraphStitcher : IStitcher
                 audioFilters.Add($"volume={Number(audio.Volume)}");
             }
 
-            // Pads the track with silence so it can never be the shorter of the two streams,
-            // which would otherwise make -shortest below cut the video short at whatever point
-            // the audio ran out. Ahead of the fades rather than after them, so the closing afade
+            // Pads with silence so the track can never be the shorter stream, which would make
+            // -shortest below cut the video short. Ahead of the fades, so the closing afade
             // still has a stream to act on at the timestamp it was computed for.
             audioFilters.Add("apad");
 
-            // Matched to the video fades so the bed does not carry on at full volume over a
-            // picture fading to black. Timed against the video, which is what the fades were
-            // computed from, and apad above guarantees the stream still exists at that point.
+            // Matched to the video fades so the bed does not play on over a picture fading out.
             audioFilters.AddRange(plan.AudioFadeFilters());
 
             arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
@@ -209,7 +200,6 @@ public sealed record StitchPlan
     /// <summary>The closing fade, after clamping. Zero when there is none.</summary>
     public TimeSpan FadeOutDuration => ClampFade(_transition.FadeOut, TotalDuration);
 
-    /// <summary>When the closing fade begins.</summary>
     public TimeSpan FadeOutStart
     {
         get
@@ -220,13 +210,8 @@ public sealed record StitchPlan
     }
 
     /// <summary>
-    /// True when the render fades at either end.
-    /// <para>
-    /// Exposed so the audio can be faded on exactly the same schedule. A picture that fades to
-    /// black under a soundtrack still playing at full volume, then stops dead, is the single
-    /// most obvious way for a render to sound unfinished — and it is far more noticeable under
-    /// a music bed than under a clip's own incidental audio.
-    /// </para>
+    /// True when the render fades at either end. Exposed so the audio can be faded on exactly
+    /// the same schedule.
     /// </summary>
     public bool HasFades => FadeInDuration > TimeSpan.Zero || FadeOutDuration > TimeSpan.Zero;
 
@@ -260,8 +245,7 @@ public sealed record StitchPlan
         if (requested > TimeSpan.Zero && durations.Count > 1)
         {
             // xfade consumes the transition from both neighbours. If it is not comfortably
-            // shorter than the shortest clip, the graph either errors or eats a clip whole,
-            // so clamp to half the shortest segment.
+            // shorter than the shortest clip, the graph either errors or eats a clip whole.
             var shortest = durations.Min();
             var ceiling = TimeSpan.FromSeconds(shortest.TotalSeconds / 2);
             if (requested > ceiling)
@@ -372,9 +356,8 @@ public sealed record StitchPlan
 
     private void BuildAudioChains(List<string> chains)
     {
-        // The tail filter is where the whole-render fades land, so the audio ends on the same
-        // schedule as the picture. anull when there are none, keeping the chain shape identical
-        // either way.
+        // Where the whole-render fades land. anull when there are none, keeping the chain shape
+        // identical either way.
         var fades = AudioFadeFilters();
         var tail = fades.Count > 0 ? string.Join(',', fades) : "anull";
 

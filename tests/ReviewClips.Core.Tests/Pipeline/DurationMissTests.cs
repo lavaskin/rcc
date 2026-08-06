@@ -6,13 +6,8 @@ namespace ReviewClips.Core.Tests.Pipeline;
 
 /// <summary>
 /// The cross-check between the plan the pipeline arrives at and the runtime that was asked for.
-/// <para>
-/// Every stage of planning aims at the target rather than measuring against it, and each one has
-/// its own way of missing: a clip clamped at the end of its source, a cue list the runtime cannot
-/// be divided over, a cadence that would not fit. The plan summary always showed the real figure,
-/// but a render that quietly came out forty seconds short still exited zero and said nothing,
-/// which is exactly the kind of thing a scripted caller never notices.
-/// </para>
+/// Every stage of planning aims at the target rather than measuring against it, and a render
+/// that came out short still exited zero and said nothing.
 /// </summary>
 public class DurationMissTests
 {
@@ -20,8 +15,8 @@ public class DurationMissTests
         warnings.FirstOrDefault(w => w.Contains("comes out", StringComparison.Ordinal));
 
     /// <summary>
-    /// The case that prompted this: three cues over five minutes, the last of them close enough
-    /// to the end of the file that its equal share does not fit. The render lands 40s short.
+    /// Three cues over five minutes, the last close enough to the end of the file that its equal
+    /// share does not fit; the render lands 40s short.
     /// </summary>
     [Fact]
     public async Task ACueClampedAtTheEndOfItsSourceIsReported()
@@ -52,8 +47,8 @@ public class DurationMissTests
         warning.ShouldContain("short of");
         warning.ShouldContain("300s");
 
-        // The advice has to name the thing the reader can act on, which for cues is where the
-        // cues sit rather than the splice cadence they are not using.
+        // The advice must name what the reader can act on: for cues that is where the cues sit,
+        // not the splice cadence they are not using.
         warning.ShouldContain("cue");
     }
 
@@ -75,8 +70,8 @@ public class DurationMissTests
     }
 
     /// <summary>
-    /// The count-based shortfall already describes this situation in terms of clips, and offers
-    /// the better advice. Reporting it a second time in seconds would be noise.
+    /// The count-based shortfall already describes this in terms of clips and offers the better
+    /// advice, so reporting it again in seconds would be noise.
     /// </summary>
     [Fact]
     public async Task AShortfallAlreadyReportedByClipCountIsNotRepeated()
@@ -101,14 +96,14 @@ public class DurationMissTests
     }
 
     /// <summary>
-    /// Both directions are reported. An overshoot is the rarer one and the easier to miss, since
-    /// nothing prompts anybody to check a file for being too long.
+    /// Both directions are reported. An overshoot is rarer and easier to miss, since nothing
+    /// prompts anybody to check a file for being too long.
     /// </summary>
     [Fact]
     public void AnOvershootIsReportedAsWellAsAShortfall()
     {
-        // Exercised through the same arithmetic the pipeline uses, since arranging a planner
-        // overshoot is precisely what the previous commit made impossible.
+        // Asserted against the pipeline's own arithmetic: arranging a planner overshoot is
+        // exactly what the compensation fix made impossible.
         var durations = Enumerable.Repeat(TimeSpan.FromSeconds(6), 10).ToList();
 
         Core.Planning.SplicePlanner
@@ -131,8 +126,8 @@ public class DurationMissTests
         var harness = new PipelineHarness();
         var source = harness.AddSource("film.mkv", 20000);
 
-        // Cues divide the runtime equally and are taken as given, which makes them the one
-        // strategy that can be asked to miss by an exact amount.
+        // Cues divide the runtime equally and are taken as given, so they are the one strategy
+        // that can be asked to miss by an exact amount.
         var shortened = target - miss;
 
         var request = PipelineHarness.Request(source, durationSeconds: target) with

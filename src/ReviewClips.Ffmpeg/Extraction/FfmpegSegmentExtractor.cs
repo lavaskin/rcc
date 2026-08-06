@@ -61,11 +61,10 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         var segment = request.Segment;
         var look = request.Look;
 
-        // A speed change means the output length differs from the source length consumed, so the
+        // A speed change makes the output length differ from the source length consumed, so the
         // read window is the wider (or narrower) of the two. Taken from the segment rather than
-        // recomputed from look.Speed: selection reserved this exact stretch when it decided the
-        // clip would fit inside its source, and recomputing it here would be a second opinion on
-        // a question that has already been answered.
+        // recomputed from look.Speed: selection reserved this exact stretch when it fitted the
+        // clip to its source.
         var readDuration = segment.ReadDuration;
 
         var arguments = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
@@ -76,23 +75,20 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         }
 
         // -ss BEFORE -i is an input seek: FFmpeg jumps to the nearest preceding keyframe and
-        // decodes forward, discarding frames until the requested timestamp. Combined with
-        // re-encoding this is both fast and frame-accurate, so there is no need for the far
-        // slower output-side seek.
+        // decodes forward, discarding frames until the requested timestamp. With re-encoding
+        // that is both fast and frame-accurate, so the far slower output-side seek is not needed.
         arguments.AddRange(["-ss", Seconds(segment.Start)]);
         arguments.AddRange(["-t", Seconds(readDuration)]);
         arguments.AddRange(["-i", segment.SourcePath]);
 
         var nextInput = 1;
 
-        // Segment audio is wanted, but this particular source has no audio stream. Both stitchers
-        // require every segment to carry the same stream layout — the concat demuxer for a clean
-        // stream copy, the filter graph because it references [k:a] for each input and cannot bind
-        // if one is absent — so silence stands in and keeps the layout uniform. That is what lets
-        // a source set mixing silent and sounded files be joined at all.
+        // Segment audio is wanted but this source has no audio stream. Both stitchers need every
+        // segment to carry the same stream layout — concat for a clean stream copy, the filter
+        // graph because it references [k:a] per input and cannot bind if one is absent.
         //
-        // Bounded by the segment's own length rather than readDuration: anullsrc is infinite, and
-        // the silence is generated at output rate, so it needs no speed compensation.
+        // Bounded by the segment's own length, not readDuration: anullsrc is infinite, and the
+        // silence is generated at output rate, so it needs no speed compensation.
         var silenceIndex = default(int?);
         if (!request.Mute && !request.Source.HasAudio)
         {
@@ -125,11 +121,9 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", "[vout]"]);
 
-        // Drop the source's chapter markers. FFmpeg would otherwise copy them from the input
-        // and merely shift them to the cut, so a three second segment ends up carrying the
-        // whole film's chapter list. They describe footage this segment does not contain, and
-        // the filter-graph stitcher would then propagate the first segment's copy into the
-        // finished file.
+        // Drop the source's chapter markers. FFmpeg would otherwise copy them from the input and
+        // merely shift them to the cut, so a three second segment carries the whole film's
+        // chapter list, which the filter-graph stitcher then propagates into the finished file.
         arguments.AddRange(["-map_chapters", "-1"]);
 
         if (request.Mute)
@@ -147,7 +141,6 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             // already, so retiming it would make it disagree with the video.
             if (look.HasSpeedChange && silenceIndex is null)
             {
-                // atempo only accepts 0.5-2.0 per instance; chain to reach further extremes.
                 arguments.AddRange(["-filter:a", BuildAtempoChain(look.Speed)]);
             }
         }
@@ -162,18 +155,14 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-fps_mode", "cfr"]);
         arguments.AddRange(["-r", Number(request.Format.FrameRate)]);
 
-        // Cut to an exact frame count rather than trusting -t.
-        //
-        // -ss/-t bound which *source* timestamps are read, and the fps filter then resamples that
-        // window onto the output rate. Both steps round outwards, so a segment reliably comes out
-        // one to two frames longer than asked for. One frame is invisible; the concat stitcher
-        // sums actual segment lengths, so across a 119-slot render the same bias compounds into
-        // five seconds of overshoot on a ten-minute request. The filter-graph stitcher is affected
-        // differently but no less: it computes xfade offsets from the planned lengths, so segments
-        // that disagree with the plan push the schedule out of step.
+        // Cut to an exact frame count rather than trusting -t. -ss/-t bound which *source*
+        // timestamps are read and the fps filter resamples that window onto the output rate;
+        // both round outwards, so a segment comes out one to two frames long and the bias
+        // compounds. Concat sums actual segment lengths, while the filter graph computes xfade
+        // offsets from the planned ones, so the drift disturbs either stitcher.
         //
         // Asking for fewer frames than FFmpeg would have produced is safe: the read window is
-        // always the wider of the two, so the frames exist and the surplus is simply not written.
+        // always the wider of the two, so the frames exist and the surplus is not written.
         var frames = FrameCount(segment.Duration, request.Format.FrameRate);
         if (frames > 0)
         {

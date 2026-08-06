@@ -6,19 +6,10 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Tests.Selection;
 
 /// <summary>
-/// Placement under <c>--speed</c>.
-/// <para>
-/// A clip is two lengths at once when it is retimed: at <c>--speed 2</c> a five second clip
-/// occupies five seconds of the render and ten seconds of the film. Selection reserved the
-/// output length and the extractor read the source length, and nothing reconciled them — so a
-/// clip near the end of a file was silently truncated, clips read past the ranges that were
-/// supposed to exclude them, two clips could read the same footage while satisfying
-/// <c>--min-gap</c>, and the usage guardrail under-reported by the speed factor.
-/// </para>
-/// <para>
-/// Every assertion here is about the source side, because that is the side all four of those
-/// were wrong on.
-/// </para>
+/// Placement under <c>--speed</c>. A retimed clip has two lengths: at <c>--speed 2</c> a five
+/// second clip occupies five seconds of the render and ten seconds of the film. Selection
+/// reserved the output length while the extractor read the source length, so every assertion
+/// here is about the source side.
 /// </summary>
 public class RetimedPlacementTests
 {
@@ -69,9 +60,8 @@ public class RetimedPlacementTests
     };
 
     /// <summary>
-    /// The overrun that started this. Placement used to reserve the output length, so a clip
-    /// could begin close enough to the end of the file that its read window ran past it — and the
-    /// extractor then produced a short clip with no warning.
+    /// Reserving only the output length let a clip begin close enough to the end of the file
+    /// that its read window ran past it, and the extractor then produced a short clip silently.
     /// </summary>
     [Theory]
     [MemberData(nameof(EveryStrategy))]
@@ -126,9 +116,9 @@ public class RetimedPlacementTests
     }
 
     /// <summary>
-    /// The non-overlap floor is documented as never relaxed, and it was — quietly, whenever the
-    /// speed was above one. Two clips four seconds apart at <c>--speed 2</c> each read eight
-    /// seconds, so half of one is literally the same footage as the other.
+    /// The non-overlap floor is documented as never relaxed, and any speed above one relaxed it:
+    /// two clips four seconds apart at <c>--speed 2</c> each read eight seconds, so half of one
+    /// is the same footage as the other.
     /// </summary>
     [Theory]
     [MemberData(nameof(EveryStrategy))]
@@ -149,9 +139,8 @@ public class RetimedPlacementTests
     }
 
     /// <summary>
-    /// The guardrail exists to answer how much of a work was used, and at <c>--speed 2</c> it was
-    /// answering with half. Its numerator comes from the segment ranges, so the fix is the same
-    /// one: a range is a stretch of source.
+    /// The guardrail answers how much of a work was used, and at <c>--speed 2</c> it answered
+    /// with half. Its numerator comes from the segment ranges, and a range is source footage.
     /// </summary>
     [Fact]
     public void TheUsageGuardMeasuresTheFootageActuallyRead()

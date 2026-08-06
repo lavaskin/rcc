@@ -31,16 +31,14 @@ using var cancellation = new CancellationTokenSource();
 // Interruption must unwind the pipeline so child FFmpeg processes are killed and the partial
 // output and temp files are cleaned up. A second signal gives up and lets the runtime terminate.
 //
-// PosixSignalRegistration is used rather than Console.CancelKeyPress because the latter only
-// covers SIGINT. It never sees SIGTERM, which is what `kill`, systemd, Docker and CI runners
-// actually send, so a CancelKeyPress-only program leaks orphaned encoders when shut down by
-// anything other than an interactive Ctrl+C.
+// PosixSignalRegistration rather than Console.CancelKeyPress: the latter only covers SIGINT and
+// never sees SIGTERM, which is what `kill`, systemd, Docker and CI runners send, so it leaks
+// orphaned encoders when shut down by anything other than an interactive Ctrl+C.
 //
 // The handlers deliberately do almost nothing. They run on the runtime's signal thread, and
-// CancellationTokenSource.Cancel() invokes every registered callback synchronously on the
-// calling thread; doing that here would run the pipeline's cancellation callbacks on the signal
-// thread, contending with locks the worker threads hold. Dispatching to the thread pool keeps
-// the signal thread free.
+// CancellationTokenSource.Cancel() invokes every registered callback synchronously on the calling
+// thread, which would contend with locks the worker threads hold. Dispatching to the thread pool
+// keeps the signal thread free.
 var interrupted = 0;
 
 void HandleSignal(PosixSignalContext context)

@@ -7,9 +7,8 @@ namespace ReviewClips.Cli.Cli;
 /// <summary>
 /// The option surface shared by <c>generate</c> and <c>batch</c>.
 /// <para>
-/// Every option is nullable and has no parser-level default. That is deliberate: it makes
-/// "was this specified?" unambiguous, so precedence can be resolved cleanly as
-/// CLI value, then profile value, then built-in default.
+/// Every option is nullable with no parser-level default, so "was this specified?" is unambiguous
+/// and precedence resolves as CLI value, then profile value, then built-in default.
 /// </para>
 /// </summary>
 internal sealed class GenerateOptions
@@ -333,10 +332,9 @@ internal sealed class GenerateOptions
     /// Bare <c>--audio</c> keeps the source audio; <c>--audio track.wav</c> muxes that file
     /// instead.
     /// <para>
-    /// <c>ZeroOrOne</c> arity is what makes both spellings work from one option, and is the
-    /// reason external audio is not a breaking change. pi spells this <c>--audio MODE|FILE</c>
-    /// with <c>mute</c> as an explicit mode, which cannot be adopted without changing what an
-    /// existing bare <c>--audio</c> means.
+    /// <c>ZeroOrOne</c> arity is what makes both spellings work from one option. Respelling it as
+    /// <c>--audio MODE|FILE</c> with <c>mute</c> as an explicit mode would change what an existing
+    /// bare <c>--audio</c> means.
     /// </para>
     /// </summary>
     public Option<string?> Audio { get; } = new("--audio")

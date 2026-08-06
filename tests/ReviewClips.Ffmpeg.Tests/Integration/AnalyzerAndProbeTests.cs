@@ -226,9 +226,9 @@ public class AnalyzerTests
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
 
-        // This is the regression guard for the metadata truncation bug: the fixture is built by
-        // concatenation, which reinitialises the filter graph mid-stream. Writing metadata to a
-        // file lost everything before the final reinit, leaving samples only near the end.
+        // Pins the metadata truncation regression: the fixture is built by concatenation, which
+        // reinitialises the filter graph mid-stream, and writing metadata to a file lost
+        // everything before the final reinit.
         var analysis = await AnalyseAsync(_fixture.MultiShotClip);
 
         var samples = analysis.Motion.Samples;
@@ -236,7 +236,6 @@ public class AnalyzerTests
 
         var duration = analysis.Duration.TotalSeconds;
 
-        // Samples must start near zero and run to near the end.
         samples[0].AtSeconds.ShouldBeLessThan(1d);
         samples[^1].AtSeconds.ShouldBeGreaterThan(duration - 2d);
 

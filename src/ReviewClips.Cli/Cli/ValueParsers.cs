@@ -160,9 +160,9 @@ internal static class ValueParsers
         };
 
     /// <summary>
-    /// Parses cues from either a comma-separated list or a file, one per line.
-    /// Blank lines, <c>#</c> comments and trailing labels are ignored, so a working
-    /// notes file can be used directly.
+    /// Parses cues from either a comma-separated list or a file, one per line. Blank lines,
+    /// <c>#</c> comments and trailing labels are ignored, so a working notes file can be used
+    /// directly.
     /// </summary>
     public static Option<List<TimeSpan>> CuesOption(
         string name,
@@ -326,7 +326,7 @@ internal static class ValueParsers
                 continue;
             }
 
-            // Allow "00:12:34  the twist reveal" so the file can double as working notes.
+            // Allow a trailing label, as in "00:12:34  the twist reveal".
             var token = line.Split([' ', '\t', ',', ';'], 2, StringSplitOptions.RemoveEmptyEntries)[0];
 
             if (DurationSpec.TryParse(token, out var cue, out _))

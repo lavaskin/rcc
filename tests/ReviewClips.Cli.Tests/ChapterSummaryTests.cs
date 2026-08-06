@@ -8,9 +8,9 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Cli.Tests;
 
 /// <summary>
-/// The plan summary's chapter line. Small, but it is the only place the tool says what it did
-/// with a source's markers, and "none matched" and "matching was switched off" are different
-/// facts that a reader would act on differently.
+/// The plan summary's chapter line: the only place the tool says what it did with a source's
+/// markers. "none matched" and "matching was switched off" are different facts that a reader
+/// would act on differently.
 /// </summary>
 public class ChapterSummaryTests
 {
@@ -90,9 +90,8 @@ public class ChapterSummaryTests
 
     /// <summary>
     /// The regression. With <c>--chapters off</c> and no <c>--skip-chapter</c> there are no
-    /// patterns at all, so nothing was compared against anything. Reporting "none matched as
-    /// intro or credits" claims a search was run and came back empty, which would send a reader
-    /// looking for badly named chapters instead of at the flag they passed.
+    /// patterns at all, so nothing was compared; "none matched" would claim a search ran and came
+    /// back empty, sending a reader after badly named chapters instead of the flag they passed.
     /// </summary>
     [Fact]
     public void TurningChapterSkippingOffIsNotReportedAsAFailedMatch()

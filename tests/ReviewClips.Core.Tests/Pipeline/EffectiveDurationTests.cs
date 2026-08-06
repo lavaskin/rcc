@@ -58,10 +58,9 @@ public class EffectiveDurationTests
     }
 
     /// <summary>
-    /// The regression. A transition cannot consume more of a clip than the clip contains, so the
-    /// stitcher caps it at half the shortest. Subtracting the requested figure regardless
-    /// under-reports the render — and does so precisely in the case a reader would be checking
-    /// the number to understand.
+    /// A transition cannot consume more of a clip than the clip contains, so the stitcher caps
+    /// it at half the shortest. Subtracting the requested figure regardless under-reports the
+    /// render, precisely in the case a reader would be checking the number to understand.
     /// </summary>
     [Fact]
     public void OverlapIsClampedToHalfTheShortestClip()
@@ -89,9 +88,8 @@ public class EffectiveDurationTests
     }
 
     /// <summary>
-    /// With the clamp in place the result can no longer go non-positive, so the old
-    /// "fall back to the untrimmed total" guard is gone. Pinned because losing it silently would
-    /// turn an under-report into a wildly over-stated one.
+    /// The clamp keeps the result positive, so the old "fall back to the untrimmed total" guard
+    /// is gone. Losing the clamp would now turn an under-report into an over-stated one.
     /// </summary>
     [Fact]
     public void AnAbsurdlyLongTransitionStillLeavesAPositiveRuntime()

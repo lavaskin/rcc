@@ -10,10 +10,9 @@ namespace ReviewClips.Cli.Commands;
 /// <summary>
 /// Reports what this machine can actually do: binaries, encoders, filters, cache.
 /// <para>
-/// The encoder rows come from the same probe-encode the renderer uses to pick an encoder, not
-/// from <c>ffmpeg -encoders</c>. That distinction is the point of the command: NVENC is compiled
-/// into most FFmpeg builds and still fails at runtime without a suitable driver, so a list of
-/// compiled-in encoders answers a question nobody asked.
+/// Encoder rows come from the same probe-encode the renderer uses to pick an encoder, not from
+/// <c>ffmpeg -encoders</c>: NVENC is compiled into most FFmpeg builds and still fails at runtime
+/// without a suitable driver.
 /// </para>
 /// </summary>
 internal sealed class DoctorCommand
@@ -101,9 +100,8 @@ internal sealed class DoctorCommand
 
         if (report.HasLimitations)
         {
-            // Success, not failure. Everything a default render needs is here; some opt-in
-            // flags are not available. Exiting non-zero would make an ordinary minimal FFmpeg
-            // install look broken and send people chasing a rebuild they do not need.
+            // Success, not failure: everything a default render needs is here, only opt-in flags
+            // are missing. Exiting non-zero would make a minimal FFmpeg install look broken.
             console.MarkupLine(
                 "[green]Environment is usable[/] "
                 + Styles.Faint("with the limitations noted above."));

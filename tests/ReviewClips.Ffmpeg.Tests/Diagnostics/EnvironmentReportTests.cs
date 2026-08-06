@@ -113,10 +113,9 @@ public class VersionParserTests
 /// <summary>
 /// What <c>rcc doctor</c> concludes from a given set of findings.
 /// <para>
-/// Built from synthetic records rather than from a real inspection, because the interesting
-/// cases are precisely the ones the developer's own machine cannot produce: an FFmpeg without
-/// libzimg, or with no font installed. Those are common in containers, and getting the verdict
-/// wrong on them means telling someone their working install is broken.
+/// Built from synthetic records rather than a real inspection, because the interesting cases
+/// are the ones a working machine cannot produce: an FFmpeg without libzimg, or with no font
+/// installed. Both are common in containers.
 /// </para>
 /// </summary>
 public class EnvironmentVerdictTests

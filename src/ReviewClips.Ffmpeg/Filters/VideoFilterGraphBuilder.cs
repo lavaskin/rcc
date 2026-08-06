@@ -42,10 +42,7 @@ public sealed class VideoFilterGraphBuilder
     public IReadOnlyList<string> ActiveStageNames(FilterContext context) =>
         _stages.Where(s => s.AppliesTo(context)).Select(s => s.Name).ToList();
 
-    /// <summary>
-    /// Builds the graph.
-    /// </summary>
-    /// <param name="context">Source, target format and look.</param>
+    /// <summary>Builds the graph.</summary>
     /// <param name="inputLabel">Label of the incoming stream, typically <c>0:v</c>.</param>
     /// <param name="outputLabel">Label the caller will <c>-map</c>.</param>
     public string Build(FilterContext context, string inputLabel = "0:v", string outputLabel = "vout")

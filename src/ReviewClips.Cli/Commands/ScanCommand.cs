@@ -10,11 +10,8 @@ using Spectre.Console;
 namespace ReviewClips.Cli.Commands;
 
 /// <summary>
-/// Runs the analysis pass and populates the cache, without rendering.
-/// <para>
-/// Useful as a deliberate warm-up: scan a title once while you do something else, and every
-/// later <c>generate</c> against it starts instantly.
-/// </para>
+/// Runs the analysis pass and populates the cache, without rendering. A deliberate warm-up: scan
+/// a title once and every later <c>generate</c> against it starts from the cache.
 /// </summary>
 internal sealed class ScanCommand
 {

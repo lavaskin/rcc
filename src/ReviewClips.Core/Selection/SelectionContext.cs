@@ -38,11 +38,9 @@ public sealed record SelectionContext
     /// The stretch of source a single clip needs, which is the longest planned clip after
     /// retiming.
     /// <para>
-    /// Every eligibility question is asked with this: whether a range is long enough to sample
-    /// from, whether a candidate start has room for a clip, and how far apart two picks must sit
-    /// to avoid overlapping. All three are about source footage, so all three have to be scaled
-    /// by the speed. Leaving it at the output length is what let a clip at <c>--speed 2</c> run
-    /// off the end of its file, past an excluded range, and over its neighbour.
+    /// Every eligibility question uses this: whether a range is long enough to sample from,
+    /// whether a candidate start has room, and how far apart two picks must sit to avoid
+    /// overlapping. All three concern source footage, so all three must be scaled by the speed.
     /// </para>
     /// </summary>
     public TimeSpan LongestSegment =>
@@ -102,9 +100,8 @@ public sealed record SelectionContext
             eligible = eligible.Subtract(Options.ExcludeRanges);
         }
 
-        // Chapter bounds are stated by the container rather than inferred, so they are subtracted
-        // un-padded. A clip still cannot bleed into one, because selectors require a candidate
-        // window to fit entirely inside a single eligible range.
+        // Chapter bounds are stated by the container rather than inferred, so they subtract
+        // un-padded; a candidate window must fit entirely inside one eligible range anyway.
         var skippedChapters = SkippedChapters(source);
         if (skippedChapters.Count > 0)
         {

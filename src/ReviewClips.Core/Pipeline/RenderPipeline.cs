@@ -12,15 +12,14 @@ namespace ReviewClips.Core.Pipeline;
 public sealed class RenderPipeline
 {
     /// <summary>
-    /// Consumer NVIDIA drivers cap simultaneous NVENC sessions. Exceeding the cap fails the
-    /// encode outright, so hardware parallelism is clamped regardless of what was requested.
+    /// Consumer NVIDIA drivers cap simultaneous NVENC sessions; exceeding it fails the encode
+    /// outright, so hardware parallelism is clamped regardless of what was requested.
     /// </summary>
     private const int MaxHardwareSessions = 8;
 
     /// <summary>
     /// How far an external track may fall short of the render before it is remarked upon. Wide
-    /// enough to absorb frame quantisation and the splice planner's convergence tolerance, so
-    /// only a genuinely short track is reported.
+    /// enough to absorb frame quantisation and the splice planner's convergence tolerance.
     /// </summary>
     private static readonly TimeSpan ShortAudioTolerance = TimeSpan.FromSeconds(0.25);
 
@@ -90,7 +89,7 @@ public sealed class RenderPipeline
         }
 
         // An explicit --skip-chapter that matches nothing is almost always a typo or a wrong
-        // assumption about the titles, and silently doing nothing is the worst outcome.
+        // assumption about the titles; silently doing nothing is the worst outcome.
         if (request.Selection.SkipChapterPatterns.Count > 0
             && !infos.Any(i => Media.ChapterFilter.Matching(i.Chapters, request.Selection.SkipChapterPatterns).Count > 0))
         {
@@ -100,11 +99,9 @@ public sealed class RenderPipeline
         }
 
         // 2. When the render is to match an external track, its length replaces --duration.
-        // This has to land before cadence planning: the number and size of the splices are
-        // derived from the target, so deriving the target afterwards would size the render to
-        // the wrong number.
-        // The request itself is rebound rather than a local being threaded through, so that the
-        // plan, the summary and the manifest all report the duration the render actually has.
+        // Must precede cadence planning, which derives the number and size of the splices from
+        // the target. The request itself is rebound rather than threading a local through, so
+        // the plan, the summary and the manifest all report the duration the render actually has.
         if (request.Audio.HasExternalTrack)
         {
             if (request.Audio.MatchDuration)
@@ -118,15 +115,10 @@ public sealed class RenderPipeline
             }
             else
             {
-                // The stitcher pads a track shorter than the render with silence, so the output
-                // is the right length whether or not anything is said here. It is still worth
-                // saying: the padding leaves no trace in the file, and a render that falls silent
-                // partway through is rarely what was intended. This is the point at which both
-                // lengths are known.
-                //
-                // A warning rather than a failure, and only when the length could be read.
-                // Nothing depends on the answer as it does under --match-audio, so a container
-                // that reports no duration must not fail a render that never needed one.
+                // The stitcher pads a short track with silence, which leaves no trace in the
+                // file, so this is the only point at which both lengths are known. A warning
+                // rather than a failure: nothing depends on the answer as it does under
+                // --match-audio, so an unreadable duration must not fail a render.
                 var usable = await TryResolveAudioLengthAsync(request.Audio, cancellationToken);
 
                 if (usable is { } available && available + ShortAudioTolerance < request.TargetDuration)
@@ -140,9 +132,9 @@ public sealed class RenderPipeline
             }
         }
 
-        // 3. Plan the cadence up front so both selection and stitching agree on lengths.
-        // The target is the runtime of the finished file, so transition overlap is compensated
-        // here rather than silently shortening the result.
+        // 3. Plan the cadence up front so both selection and stitching agree on lengths. The
+        // target is the runtime of the finished file, so transition overlap is compensated here
+        // rather than silently shortening the result.
         var durations = SplicePlanner.PlanForOutput(
             request.TargetDuration,
             request.SpliceLength,
@@ -188,14 +180,13 @@ public sealed class RenderPipeline
             Random = random,
 
             // --speed is a look option, but it decides how much source a clip of a given output
-            // length consumes, so selection cannot place clips correctly without it. This is the
-            // only place it crosses over; everything downstream reads it off the segment.
+            // length consumes, so selection cannot place clips without it. The only place it
+            // crosses over; everything downstream reads it off the segment.
             SpeedFactor = request.Look.Speed,
         };
 
         // When the distinct-clip pool is capped, select only that many and repeat them to fill
-        // the runtime. Selection therefore runs against the smaller pool, which also makes the
-        // spacing constraints easier to satisfy.
+        // the runtime; the smaller pool also makes the spacing constraints easier to satisfy.
         var distinctWanted = request.MaxDistinctClips is { } cap && cap < durations.Count
             ? Math.Max(1, cap)
             : durations.Count;
@@ -204,9 +195,9 @@ public sealed class RenderPipeline
         {
             if (request.Selection.Strategy == SelectionStrategy.Cues)
             {
-                // Cues already define the pool, so the cap only limits how many of them are
-                // used. Each cue gets a full splice-length clip rather than a share of the
-                // runtime, because the runtime is filled by repetition instead.
+                // Cues already define the pool, so the cap only limits how many are used. Each
+                // cue gets a full splice-length clip rather than a share of the runtime, because
+                // repetition fills the runtime instead.
                 var used = Math.Min(request.Selection.Cues.Count, distinctWanted);
 
                 context = context with
@@ -228,9 +219,8 @@ public sealed class RenderPipeline
         else if (request.Selection.Strategy == SelectionStrategy.Cues)
         {
             // Uncapped cues: the clip count is the cue count, not the count the splice cadence
-            // happened to produce, so the runtime has to be divided with that number in mind.
-            // Handing over the splice-derived budget instead overshoots the request by every
-            // transition the cue clips do not pay for — 8% on two cues over five minutes.
+            // produced, so the runtime has to be divided over that number. The splice-derived
+            // budget would overshoot by every transition the cue clips do not pay for.
             context = context with
             {
                 SegmentDurations = SplicePlanner.PlanEqualForOutput(
@@ -248,8 +238,7 @@ public sealed class RenderPipeline
         }
 
         // Cue-driven renders legitimately produce one segment per cue, so report against that
-        // rather than against the splice-derived count.
-        // For cues the expectation is one clip per cue, capped by --max-clips when set.
+        // rather than the splice-derived count, capped by --max-clips when set.
         var requestedCount = request.Selection.Strategy == SelectionStrategy.Cues
             ? Math.Min(request.Selection.Cues.Count, distinctWanted)
             : distinctWanted;
@@ -294,9 +283,9 @@ public sealed class RenderPipeline
             }
         }
 
-        // 7. Measure how much of the source this consumes.
-        // Deliberately after the repeat-fill: the fill is what decouples runtime from footage
-        // consumed, so measuring before it would report the pool rather than the render.
+        // 7. Measure how much of the source this consumes. Deliberately after the repeat-fill:
+        // the fill is what decouples runtime from footage consumed, so measuring before it would
+        // report the pool rather than the render.
         var usage = SourceUsageGuard.Evaluate(
             segments,
             sources.Select(s => (s.Info.Path, s.Info.Duration)),
@@ -312,12 +301,9 @@ public sealed class RenderPipeline
             warnings.Add(usageMessage);
         }
 
-        // 8. Check the finished plan against what was actually asked for.
-        // Everything above plans towards the target rather than measuring against it, and each
-        // stage has its own way of falling short: a clip clamped at the end of its source, a cue
-        // list the runtime cannot be divided over, a cadence that could not be placed. Whatever
-        // the cause, a render that is not the length that was requested should say so rather than
-        // leave it to be discovered in the finished file.
+        // 8. Check the finished plan against what was actually asked for. Everything above plans
+        // towards the target rather than measuring against it, and each stage has its own way of
+        // falling short, so the miss is caught once here rather than left to the finished file.
         if (DescribeDurationMiss(request, segments, reportedShortCount) is { } durationMessage)
         {
             warnings.Add(durationMessage);
@@ -361,9 +347,9 @@ public sealed class RenderPipeline
             // Extract.
             var extension = Path.GetExtension(request.OutputPath) is { Length: > 1 } ext ? ext : ".mp4";
 
-            // Identical clips are encoded once and referenced many times. This matters when
-            // --max-clips is repeating a small pool: a 210-slot render built from 50 clips
-            // performs 50 encodes, not 210, and every repeat is bit-identical.
+            // Identical clips are encoded once and referenced many times, which matters when
+            // --max-clips repeats a small pool: one encode per distinct clip, not per slot, and
+            // every repeat is bit-identical.
             var uniqueClips = new Dictionary<ClipKey, string>();
             var extractionQueue = new List<(Segment Segment, string Path)>();
 
@@ -533,11 +519,9 @@ public sealed class RenderPipeline
     }
 
     /// <summary>
-    /// The external track's usable length, or null when it could not be measured.
-    /// <para>
-    /// The non-throwing counterpart to <see cref="ResolveAudioTargetAsync"/>, for the callers
-    /// that only want to comment on the length rather than derive anything from it.
-    /// </para>
+    /// The external track's usable length, or null when it could not be measured. The
+    /// non-throwing counterpart to <see cref="ResolveAudioTargetAsync"/>, for callers that only
+    /// comment on the length rather than derive anything from it.
     /// </summary>
     private async Task<TimeSpan?> TryResolveAudioLengthAsync(
         Options.AudioOptions audio,
@@ -637,22 +621,15 @@ public sealed class RenderPipeline
     /// Reports a finished plan whose runtime is not the one that was requested, or null when it
     /// lands close enough.
     /// <para>
-    /// The tolerance is the larger of half a second and one per cent. Segments are cut to a whole
-    /// number of frames, so a plan is never expected to be exact to the tick; that residual is
-    /// around a frame either way and does not accumulate, which half a second clears comfortably.
-    /// The proportional term keeps the check meaningful on a long render, where a fixed allowance
-    /// would be noise.
-    /// </para>
-    /// <para>
-    /// Both directions are reported. An overshoot is the rarer and more surprising of the two —
-    /// nobody inspects a file for being too long — and it is the shape the transition arithmetic
-    /// fails in when it fails.
+    /// Tolerance is the larger of half a second and one per cent. Segments are cut to whole
+    /// frames, so a plan is never exact to the tick; the proportional term keeps the check
+    /// meaningful on a long render, where a fixed allowance would be noise. Both directions are
+    /// reported: overshoot is the shape the transition arithmetic fails in.
     /// </para>
     /// </summary>
     /// <param name="alreadyReported">
-    /// Whether the count-based shortfall above has already spoken. It names the same problem in
-    /// terms of clips rather than seconds and offers the more actionable advice, so this defers
-    /// to it rather than saying it again in different units.
+    /// Whether the count-based shortfall has already been reported. It names the same problem in
+    /// clips rather than seconds and offers more actionable advice, so this defers to it.
     /// </param>
     private static string? DescribeDurationMiss(
         ClipRequest request,
@@ -680,9 +657,9 @@ public sealed class RenderPipeline
         var short_ = difference < TimeSpan.Zero;
         var direction = short_ ? "short of" : "longer than";
 
-        // The two directions have different causes and so different remedies, and for cues they
-        // are not even the same kind of problem: coming up short means a cue could not be given
-        // its share, running long means there were more cues than the runtime can divide.
+        // The two directions have different causes and so different remedies. For cues, short
+        // means a cue could not be given its share; long means more cues than the runtime can
+        // divide.
         var advice = (request.Selection.Strategy, short_) switch
         {
             (SelectionStrategy.Cues, true) =>
@@ -810,9 +787,9 @@ public sealed class RenderPlanningException : Exception
 /// Thrown when a render would consume more of the source than the configured limit allows and
 /// <see cref="Options.ClipRequest.EnforceMaxSourceFraction"/> is set.
 /// <para>
-/// Deliberately not a <see cref="RenderPlanningException"/>. That one means "nothing usable
-/// could be produced", which is a different situation with a different exit code: here the
-/// planning worked perfectly and a policy declined the result.
+/// Deliberately not a <see cref="RenderPlanningException"/>, which means "nothing usable could
+/// be produced" and carries a different exit code: here the planning worked and a policy
+/// declined the result.
 /// </para>
 /// </summary>
 public sealed class SourceUsageLimitException : Exception

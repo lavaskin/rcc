@@ -30,7 +30,7 @@ public sealed record RenderPlan
 
     /// <summary>
     /// Total source footage consumed, counting each distinct clip once. Read off
-    /// <see cref="SourceUsage"/> rather than computed again, so the summary's figure and the
+    /// <see cref="SourceUsage"/> rather than recomputed, so the summary's figure and the
     /// guardrail's are the same number by construction.
     /// </summary>
     public TimeSpan DistinctSourceDuration => SourceUsage.Used;
@@ -51,12 +51,11 @@ public sealed record RenderPlan
     /// <summary>
     /// Runtime after transition overlaps are accounted for.
     /// <para>
-    /// Computed the same way the stitcher computes it, via
+    /// Computed the way the stitcher computes it, via
     /// <see cref="Planning.SplicePlanner.EffectiveTransition"/>: a transition longer than half the
     /// shortest clip is clamped, because it cannot consume more of a clip than the clip has.
-    /// Subtracting the requested duration unclamped makes the summary and the manifest under-report
-    /// a render whose clips are shorter than twice the transition, which is exactly the case a
-    /// reader would be checking the number for.
+    /// Subtracting the requested duration unclamped would under-report any render whose clips are
+    /// shorter than twice the transition.
     /// </para>
     /// </summary>
     public TimeSpan EffectiveDuration =>

@@ -3,9 +3,8 @@ using ReviewClips.Core.Options;
 namespace ReviewClips.Cli.Profiles;
 
 /// <summary>
-/// A named bundle of defaults. Every field is nullable: a profile only states what it cares
-/// about, and anything it leaves unset keeps the built-in default. Explicit CLI options always
-/// win over a profile.
+/// A named bundle of defaults. Every field is nullable: unset means keep the built-in default.
+/// Explicit CLI options always win over a profile.
 /// </summary>
 public sealed record RenderProfile
 {

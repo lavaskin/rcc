@@ -3,9 +3,9 @@ namespace ReviewClips.Ffmpeg.Filters;
 /// <summary>
 /// One composable step of the per-segment video treatment.
 /// <para>
-/// Order matters a great deal and the constants in <see cref="FilterStageOrder"/> encode the
-/// reasoning. A stage may emit several chains (see the blur-pad fit, which splits and
-/// recombines the stream) provided it consumes its input label and produces its output label.
+/// Ordering is significant; <see cref="FilterStageOrder"/> encodes the reasoning. A stage may
+/// emit several chains (see the blur-pad fit, which splits and recombines the stream) provided
+/// it consumes its input label and produces its output label.
 /// </para>
 /// </summary>
 public interface IVideoFilterStage
@@ -20,9 +20,7 @@ public interface IVideoFilterStage
     void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel);
 }
 
-/// <summary>
-/// Canonical stage ordering.
-/// </summary>
+/// <summary>Canonical stage ordering.</summary>
 public static class FilterStageOrder
 {
     /// <summary>Tone-map first, while the data is still in its original wide-gamut form.</summary>
@@ -53,25 +51,23 @@ public static class FilterStageOrder
 
     /// <summary>
     /// After <see cref="Look"/> so it sharpens the graded image, but before <see cref="Blur"/>
-    /// so an explicit <c>--blur</c> still dominates. Asking for both is contradictory; this
-    /// ordering at least makes the contradiction resolve the way the stronger request implies.
+    /// so an explicit <c>--blur</c> still dominates.
     /// </summary>
     public const int Sharpen = 950;
 
     public const int Blur = 1000;
 
     /// <summary>
-    /// Immediately after <see cref="Blur"/>. Pixelation is a downscale and upscale, so blurring
-    /// first softens the block edges; doing it the other way round blurs away the blocks that
-    /// are the entire point.
+    /// Immediately after <see cref="Blur"/>: pixelation is a downscale and upscale, so blurring
+    /// first softens the block edges, while the other order blurs the blocks away entirely.
     /// </summary>
     public const int Pixelate = 1010;
 
     public const int Vignette = 1100;
 
     /// <summary>
-    /// Alongside <see cref="Vignette"/>: both are edge treatments, and feathering after the
-    /// corners are darkened keeps the fade the outermost of the two.
+    /// Alongside <see cref="Vignette"/>: feathering after the corners are darkened keeps the
+    /// fade the outermost of the two edge treatments.
     /// </summary>
     public const int FadeEdges = 1150;
 
@@ -79,9 +75,8 @@ public static class FilterStageOrder
     public const int Grain = 1200;
 
     /// <summary>
-    /// After every look and well before <see cref="OutputFormat"/>. A credit line exists to
-    /// be read, so nothing that obscures the frame may run after it — being blurred or
-    /// grained over would defeat the point of burning it in.
+    /// After every look and well before <see cref="OutputFormat"/>: a credit line exists to be
+    /// read, so nothing that obscures the frame may run after it.
     /// </summary>
     public const int Attribution = 1350;
 

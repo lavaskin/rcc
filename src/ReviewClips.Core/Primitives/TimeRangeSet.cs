@@ -118,12 +118,8 @@ public sealed class TimeRangeSet : IReadOnlyList<TimeRange>
 
     /// <summary>
     /// Projects a real timestamp onto "eligible time": the amount of eligible material that
-    /// precedes it, ignoring the excluded gaps.
-    /// <para>
-    /// This is what lets segments be distributed evenly across the <em>usable</em> footage
-    /// rather than across the wall-clock runtime, which matters when large stretches have been
-    /// excluded as black, frozen, or outside the requested ranges.
-    /// </para>
+    /// precedes it, ignoring the excluded gaps. Lets segments be spread evenly across the
+    /// <em>usable</em> footage rather than across the wall-clock runtime.
     /// </summary>
     /// <returns>The projected offset, or <c>null</c> when the instant is not eligible.</returns>
     public TimeSpan? Project(TimeSpan instant)
@@ -148,7 +144,7 @@ public sealed class TimeRangeSet : IReadOnlyList<TimeRange>
         return null;
     }
 
-    /// <summary>True when a window of <paramref name="length"/> starting at <paramref name="start"/> fits inside a single range.</summary>
+    /// <summary>True when a window of this length starting here fits inside a single range.</summary>
     public bool CanFit(TimeSpan start, TimeSpan length)
     {
         var end = start + length;

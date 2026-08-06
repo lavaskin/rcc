@@ -6,11 +6,8 @@ using ReviewClips.Ffmpeg.Filters;
 namespace ReviewClips.Ffmpeg.Tests.Integration;
 
 /// <summary>
-/// Runs every generated filter graph through real FFmpeg.
-/// <para>
-/// String assertions cannot tell whether a graph is actually valid: a mislabelled branch or an
-/// unsupported option only fails at execution time. These tests are the ones that catch that.
-/// </para>
+/// Runs every generated filter graph through real FFmpeg. String assertions cannot tell whether
+/// a graph is valid: a mislabelled branch or an unsupported option only fails at execution time.
 /// </summary>
 [Collection(FfmpegTestGroup.Name)]
 public class FilterGraphExecutionTests
@@ -152,8 +149,6 @@ public class FilterGraphExecutionTests
         // to assert about tone mapping here and a failure would say the wrong thing.
         Assert.SkipUnless(_fixture.HasFilter("zscale"), "This FFmpeg has no zscale (libzimg).");
 
-        // The zscale/tonemap chain depends on optional FFmpeg components, so executing it is
-        // the only way to know the local build supports it.
         await RenderAsync(
             _fixture.SimpleClip,
             Info(1280, 720, transfer: "smpte2084"),
@@ -212,10 +207,6 @@ public class FilterGraphExecutionTests
     }
 
     // --- Stages ported from pi ---------------------------------------------
-    //
-    // These are the tests that matter for the new stages. A drawtext or zscale graph can look
-    // perfectly reasonable as a string and still be rejected outright by FFmpeg, which is how
-    // the colorlevels segfault and the zscale colorspace failure were both found.
 
     [Theory]
     [InlineData(0.3)]
@@ -303,9 +294,8 @@ public class FilterGraphExecutionTests
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
         Assert.SkipUnless(_fixture.FontAvailable, "drawtext cannot resolve a font here.");
 
-        // Every one of these contains a character that is structural in FFmpeg's filter
-        // grammar. Inlining any of them into text= terminates the argument early and fails the
-        // graph, which is the entire reason the stage writes through textfile=.
+        // Every one of these contains a character that is structural in FFmpeg's filter grammar,
+        // so inlining it into text= would terminate the argument early. Hence textfile=.
         await RenderAsync(
             _fixture.SimpleClip,
             Info(1280, 720),
@@ -387,8 +377,7 @@ public class FilterGraphExecutionTests
             LookOptions.None with { Gamma = 1.8 },
             "gamma_high.mp4"));
 
-        // eq's gamma is pow(value, 1/gamma), so above 1 brightens. Easy to get backwards, and
-        // the reason the doc comment states the direction explicitly.
+        // eq's gamma is pow(value, 1/gamma), so above 1 brightens.
         lifted.Mean.ShouldBeGreaterThan(deepened.Mean);
     }
 
@@ -532,8 +521,8 @@ public class LookToneTests
         var ratio = after.Mean / before.Mean;
         ratio.ShouldBeInRange(0.55, 0.78);
 
-        // The regression that motivated this test: an additive brightness offset drove the
-        // median pixel to 0, turning real footage into a black rectangle.
+        // Pins the regression: an additive brightness offset drove the median pixel to 0,
+        // turning real footage into a black rectangle.
         after.Median.ShouldBeGreaterThan(0);
         after.Max.ShouldBeGreaterThan(40);
     }

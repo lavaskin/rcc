@@ -4,9 +4,9 @@ using System.Globalization;
 namespace ReviewClips.Core.Primitives;
 
 /// <summary>
-/// An offset into a piece of media expressed either absolutely (<c>90s</c>) or
-/// as a fraction of its runtime (<c>5%</c>). Used for <c>--skip-head</c> / <c>--skip-tail</c>
-/// so a single default works across a 90-minute film and a 2-minute trailer.
+/// An offset into a piece of media, expressed either absolutely (<c>90s</c>) or as a fraction of
+/// its runtime (<c>5%</c>), so one <c>--skip-head</c> / <c>--skip-tail</c> default suits any
+/// runtime.
 /// </summary>
 public readonly record struct Offset
 {
@@ -25,14 +25,12 @@ public readonly record struct Offset
     public bool IsRelative => Fraction.HasValue;
 
     /// <summary>
-    /// True when this offset trims nothing, whichever form it was given in.
-    /// <c>0s</c> and <c>0%</c> are distinct values but the same instruction.
+    /// True when this offset trims nothing, whichever form it was given in: <c>0s</c> and
+    /// <c>0%</c> are distinct values but the same instruction.
     /// <para>
-    /// A default-constructed <see cref="Offset"/> holds neither form and also trims nothing, so it
-    /// counts too. It cannot arrive from the command line, where both parse paths produce one or
-    /// the other, but <c>SelectionOptions</c> can be built directly and
-    /// <c>EligibilityDiagnostics</c> reads this to decide whether the trims are worth blaming for
-    /// an empty selection — which it would get exactly backwards.
+    /// A default-constructed <see cref="Offset"/> holds neither form and counts too. Parsing
+    /// always produces one or the other, but <c>SelectionOptions</c> can be built directly, and
+    /// <c>EligibilityDiagnostics</c> reads this when apportioning blame for an empty selection.
     /// </para>
     /// </summary>
     public bool IsZero => Absolute is { Ticks: <= 0 }

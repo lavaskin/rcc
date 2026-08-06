@@ -16,11 +16,10 @@ namespace ReviewClips.Ffmpeg.Tests.Integration;
 /// A segment must contain exactly the frames it was planned to contain.
 /// <para>
 /// <c>-ss</c>/<c>-t</c> bound which source timestamps are read; the <c>fps</c> filter then
-/// resamples that window onto the output rate. Both round outwards, so a segment reliably comes
-/// out one to two frames long. Individually that is invisible. The concat stitcher sums actual
-/// segment lengths, so the same bias in the same direction across a hundred and twenty clips
-/// compounds into seconds — and the filter-graph stitcher schedules its transitions from the
-/// <em>planned</em> lengths, so segments that disagree with the plan push the joins out of step.
+/// resamples that window onto the output rate. Both round outwards, so a segment comes out one
+/// to two frames long. The concat stitcher sums actual segment lengths, so that bias compounds
+/// across a render, and the filter-graph stitcher schedules transitions from the <em>planned</em>
+/// lengths, so segments that disagree with the plan push the joins out of step.
 /// </para>
 /// </summary>
 [Collection(FfmpegTestGroup.Name)]
@@ -134,9 +133,8 @@ public class SegmentLengthTests
     }
 
     /// <summary>
-    /// The compounding case, at a scale small enough to run in CI. Eight awkward clips are enough
-    /// for the old per-clip bias to show: it produced eight to twelve frames of overshoot here,
-    /// which is the same proportional error that reached five seconds on a ten-minute render.
+    /// The compounding case, at a scale small enough to run in CI: eight awkward clips are enough
+    /// for a per-clip rounding bias to show as roughly ten frames of overshoot.
     /// </summary>
     [Fact]
     public async Task ConcatenatedSegmentsSumToThePlannedRuntime()
@@ -179,10 +177,9 @@ public class SegmentLengthTests
     }
 
     /// <summary>
-    /// The frame cap is on the output, so it is derived from the rendered length rather than from
-    /// the longer or shorter stretch of source read to produce it. Run at both a slower and a
-    /// faster rate: only the faster one reads more source than it emits, and it is the direction
-    /// that can run off the end of a file.
+    /// The frame cap is on the output, so it derives from the rendered length rather than the
+    /// stretch of source read to produce it. Both directions are run: only the faster rate reads
+    /// more source than it emits, which is the direction that can run off the end of a file.
     /// </summary>
     [Theory]
     [InlineData(0.5)]
@@ -225,10 +222,9 @@ public class SegmentLengthTests
     }
 
     /// <summary>
-    /// A clip is two lengths at once under <c>--speed</c>, and the extractor has to read the
-    /// source-side one. Asserted on the command line rather than on a file, because reading too
-    /// much source is invisible in the output — the frame cap trims the surplus — right up until
-    /// the surplus runs past the end of the file and the clip comes out short.
+    /// A clip is two lengths at once under <c>--speed</c>; the extractor has to read the
+    /// source-side one. Asserted on the command line because the frame cap trims an over-long
+    /// read invisibly, until the surplus runs past the end of the file and the clip comes out short.
     /// </summary>
     [Theory]
     [InlineData(1.0, "4")]
@@ -295,9 +291,9 @@ public class SegmentLengthTests
         FfmpegSegmentExtractor.FrameCount(TimeSpan.FromSeconds(seconds), fps).ShouldBe(expected);
 
     /// <summary>
-    /// FFmpeg exits 0 after writing a stream-less file when its graph yields nothing, so a
-    /// successful exit code is not on its own evidence that anything was encoded. Without this
-    /// check the empty file travels downstream and fails somewhere that cannot explain itself.
+    /// FFmpeg exits 0 after writing a stream-less file when its graph yields nothing, so the exit
+    /// code alone is no evidence that anything was encoded; the empty file then travels downstream
+    /// and fails somewhere that cannot explain itself.
     /// </summary>
     [Fact]
     public async Task ARunThatEncodesNothingIsTreatedAsAFailure()

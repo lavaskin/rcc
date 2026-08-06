@@ -6,25 +6,17 @@ namespace ReviewClips.Core.Selection;
 /// <summary>
 /// Works out <em>why</em> a selection came back empty.
 /// <para>
-/// The naive version of this message lists every filter that happened to be switched on and calls
-/// them all suspects. Since black and frozen rejection are on by default, that means a render
-/// refused because <c>--range</c> named a two second window is told to try
-/// <c>--no-reject-black</c>. The advice is wrong, and following it wastes an analysis pass.
-/// </para>
-/// <para>
-/// So the cause is measured instead of guessed: each filter is relaxed in turn and the eligible
-/// footage recomputed. Whichever relaxation puts footage back is the one that took it away.
-/// This deliberately runs through <see cref="SelectionContext.EligibleRanges"/> rather than
-/// reimplementing the subtractions, so the explanation cannot drift away from the behaviour it
-/// is explaining.
+/// The cause is measured, not guessed: each filter is relaxed in turn and the eligible footage
+/// recomputed; whichever relaxation restores footage is the culprit. Simply listing the enabled
+/// filters would blame the on-by-default detectors for a failure caused by an explicit option.
+/// Recomputing via <see cref="SelectionContext.EligibleRanges"/> keeps this from drifting.
 /// </para>
 /// </summary>
 public static class EligibilityDiagnostics
 {
     /// <summary>
-    /// Describes the filter responsible for there being no eligible footage, or null when there
-    /// <em>is</em> eligible footage and the failure therefore lies in placement rather than in
-    /// eligibility.
+    /// Describes the filter responsible for there being no eligible footage, or null when
+    /// footage <em>was</em> eligible and the failure lies in placement instead.
     /// </summary>
     public static string? Explain(SelectionContext context)
     {
@@ -50,8 +42,8 @@ public static class EligibilityDiagnostics
             }
         }
 
-        // Nothing that can be relaxed accounts for it, so the sources are simply too short for a
-        // clip of this length. Said plainly rather than left as a list of innocent suspects.
+        // Nothing relaxable accounts for it, so the sources are simply too short for a clip of
+        // this length.
         var longest = context.Sources.Max(s => s.Info.Duration);
         return $"no source is long enough for a {window.TotalSeconds:0.#}s clip "
             + $"(the longest is {longest.TotalSeconds:0.#}s); try a shorter --splice";
@@ -93,8 +85,7 @@ public static class EligibilityDiagnostics
         }
 
         // Singly before jointly, so a source rejected purely for being static is not also
-        // accused of being black. The combined form is the fallback for when neither detector
-        // accounts for it alone.
+        // blamed on black. The combined form is the fallback when neither accounts for it alone.
         if (options.RejectBlack)
         {
             yield return (

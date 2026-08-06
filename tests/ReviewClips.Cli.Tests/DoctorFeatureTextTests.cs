@@ -9,11 +9,10 @@ namespace ReviewClips.Cli.Tests;
 /// <summary>
 /// The flag names <c>doctor</c> prints, checked against the flags that actually exist.
 /// <para>
-/// <c>doctor</c>'s optional-filter lines exist to name the option that stopped working, which
-/// makes the strings load-bearing. Nothing else verifies them: they are plain text in a different
-/// assembly from the option definitions, with no compiler relationship to the flags they quote, so
-/// they can drift without anything failing. A line naming a flag that does not exist is worse than
-/// no line at all, and the README quotes these lines verbatim.
+/// <c>doctor</c>'s optional-filter lines name the option that stopped working, which makes the
+/// strings load-bearing. They are plain text in a different assembly from the option definitions,
+/// with no compiler relationship to the flags they quote, so they can drift without anything
+/// failing.
 /// </para>
 /// </summary>
 public class DoctorFeatureTextTests
@@ -67,8 +66,7 @@ public class DoctorFeatureTextTests
 
     /// <summary>
     /// A flag can exist and still be quoted with a value it does not accept, which the check
-    /// above cannot see. "--preset shorts" names a real flag: shorts is just a profile rather
-    /// than a preset.
+    /// above cannot see: "--preset shorts" names a real flag, but shorts is a profile.
     /// </summary>
     [Fact]
     public void ProfileNamesAreQuotedAgainstTheProfileFlag()

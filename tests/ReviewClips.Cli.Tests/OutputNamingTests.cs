@@ -6,10 +6,9 @@ namespace ReviewClips.Cli.Tests;
 /// <summary>
 /// Where the output filename comes from, and when.
 /// <para>
-/// The timing is the whole subject. A derived name states the render's target duration, and
-/// <c>--match-audio</c> takes that duration from the audio track during planning. A name is
-/// therefore only meaningful once the plan exists: chosen any earlier it describes a render that
-/// will not be produced, and two tracks of different lengths derive the same name and write over
+/// A derived name states the render's target duration, and <c>--match-audio</c> takes that
+/// duration from the audio track during planning. A name chosen any earlier describes a render
+/// that will not be produced, and two tracks of different lengths derive one name and write over
 /// each other.
 /// </para>
 /// </summary>
@@ -27,8 +26,8 @@ public class OutputNamingTests
     }
 
     /// <summary>
-    /// The contract the rest of this rests on: no name is chosen during Build, so nothing can
-    /// commit to one before the pipeline has settled the duration.
+    /// The contract the rest of this rests on: nothing can commit to a name before the pipeline
+    /// has settled the duration.
     /// </summary>
     [Fact]
     public void NoNameIsChosenDuringBuildWhenNoneWasGiven()
@@ -52,9 +51,8 @@ public class OutputNamingTests
     }
 
     /// <summary>
-    /// The pipeline hands EnsureOutputPath a request whose TargetDuration has already been
-    /// replaced by the track's length, so the name has to follow that rather than the 60s default
-    /// the builder started from.
+    /// The pipeline hands EnsureOutputPath a request whose TargetDuration is already the track's
+    /// length, so the name follows that rather than the 60s default the builder started from.
     /// </summary>
     [Fact]
     public void TheDerivedNameFollowsAMatchedAudioDuration()
@@ -71,10 +69,6 @@ public class OutputNamingTests
         name.ShouldNotContain("1m");
     }
 
-    /// <summary>
-    /// The property that keeps renders from destroying one another: same source, same settings,
-    /// two beds of different lengths, two names.
-    /// </summary>
     [Fact]
     public void TracksOfDifferentLengthsDoNotCollideOnOneName()
     {

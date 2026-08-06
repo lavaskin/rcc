@@ -3,12 +3,8 @@ using System.Globalization;
 namespace ReviewClips.Ffmpeg.Filters;
 
 /// <summary>
-/// Brightness, contrast and saturation.
-/// <para>
-/// The defaults darken and desaturate, which is the point of the tool: footage sitting behind
-/// narration should recede. Bright, saturated B-roll competes with your captions and voice and
-/// tends to hurt retention rather than help it.
-/// </para>
+/// Brightness, contrast and saturation. The defaults darken and desaturate, so footage sitting
+/// behind narration recedes rather than competing with it.
 /// </summary>
 public sealed class LookStage : IVideoFilterStage
 {
@@ -28,19 +24,12 @@ public sealed class LookStage : IVideoFilterStage
             // Darkening scales luma multiplicatively about the black pedestal:
             //   y = minval + (val - minval) * (1 - darken)
             //
-            // Three deliberate choices here.
-            //
-            // Multiplicative, not additive: eq's 'brightness' subtracts a constant, which
-            // crushes everything below it to pure black. On a film with dark scenes that drove
-            // the median pixel to 0 and made the footage unusable. Scaling preserves shadow
-            // structure and behaves the same regardless of how bright the scene is.
-            //
-            // lutyuv, not colorlevels: colorlevels is the more obvious choice and gives nearly
-            // identical numbers, but it segfaults FFmpeg 8.1 in this position in the graph.
-            // lutyuv is a plain lookup table, so it is both robust and fast.
-            //
-            // Anchored on minval and luma-only: this keeps the black pedestal legal, works
-            // at any bit depth, and leaves chroma untouched so colours do not wash out.
+            // Multiplicative, not additive: eq's 'brightness' subtracts a constant, crushing
+            // everything below it to pure black, whereas scaling preserves shadow structure at
+            // any scene brightness. lutyuv, not colorlevels: colorlevels gives near-identical
+            // numbers but segfaults FFmpeg 8.1 in this position in the graph. Anchoring on
+            // minval keeps the black pedestal legal at any bit depth, and staying luma-only
+            // leaves chroma untouched so colours do not wash out.
             var scale = Num(Math.Clamp(1d - look.Darken, 0d, 1d));
             filters.Add($"lutyuv=y=minval+(val-minval)*{scale}");
         }
@@ -59,8 +48,8 @@ public sealed class LookStage : IVideoFilterStage
 
         if (Math.Abs(look.Gamma - 1d) > 0.001d)
         {
-            // eq's gamma is a true power curve, so unlike its brightness it scales rather than
-            // offsets and does not crush the shadows the way the darken note above describes.
+            // eq's gamma is a true power curve: unlike its brightness it scales rather than
+            // offsets, so it does not crush the shadows.
             eq.Add($"gamma={Num(Math.Clamp(look.Gamma, 0.1d, 10d))}");
         }
 

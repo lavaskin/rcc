@@ -5,12 +5,11 @@ namespace ReviewClips.Cli.Presentation;
 /// <summary>
 /// The single place that decides how secondary console text looks.
 /// <para>
-/// Deliberately avoids Spectre's <c>[grey]</c>, which resolves to palette index 8 ("bright
-/// black"). Most terminal themes render index 8 as a very dark grey, so on a dark background
-/// it is close to invisible, and the tool has no way to know what the background is.
-/// <c>dim</c> (SGR 2) instead reduces the intensity of whatever foreground the user has
-/// configured, so it stays readable on light and dark themes alike, and terminals that do not
-/// implement SGR 2 simply draw it at full intensity - unstyled, but never illegible.
+/// Avoids Spectre's <c>[grey]</c>, which resolves to palette index 8 ("bright black"): most
+/// themes render it very dark, so it is near-invisible on a dark background, and the tool cannot
+/// know the background. <c>dim</c> (SGR 2) instead reduces the intensity of whatever foreground
+/// the user configured, so it reads on light and dark alike, and terminals without SGR 2 draw it
+/// at full intensity - unstyled, but never illegible.
 /// </para>
 /// <para>
 /// Only genuinely secondary text should be muted. Anything the user is waiting to read -

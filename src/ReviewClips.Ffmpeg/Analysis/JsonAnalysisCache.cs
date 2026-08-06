@@ -11,12 +11,8 @@ using ReviewClips.Core.Primitives;
 namespace ReviewClips.Ffmpeg.Analysis;
 
 /// <summary>
-/// Persists analysis to JSON under the user's cache directory.
-/// <para>
-/// This is what makes the tool pleasant to iterate with. Scanning a feature film is the
-/// slowest part of a render by a wide margin, and you will usually generate many different
-/// background tracks from the same title. Every run after the first reuses this.
-/// </para>
+/// Persists analysis to JSON under the user's cache directory. Scanning a source is by far the
+/// slowest part of a render, so every run after the first against the same title reuses this.
 /// <para>
 /// The cache key covers the file path, size, modification time and every analysis setting, so
 /// re-encoding a source or changing a threshold invalidates it automatically.
@@ -43,10 +39,9 @@ public sealed class JsonAnalysisCache : IAnalysisCache
     {
         var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        // LocalApplicationData is already per-user on both platforms and is the right home for a
-        // cache that should survive a reboot. It can come back empty in a container with no
-        // HOME set, and the fallback then has to supply the per-user scoping itself rather than
-        // dropping the cache into a directory shared with every other account on the machine.
+        // LocalApplicationData is already per-user on both platforms. It comes back empty in a
+        // container with no HOME set, and the fallback must then supply the per-user scoping
+        // itself rather than sharing a directory with every other account on the machine.
         return string.IsNullOrEmpty(baseDir)
             ? Path.Combine(Core.Primitives.ScratchPaths.Root, "analysis")
             : Path.Combine(baseDir, "reviewclips", "analysis");

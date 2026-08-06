@@ -4,11 +4,8 @@ using ReviewClips.Core.Options;
 namespace ReviewClips.Ffmpeg.Filters;
 
 /// <summary>
-/// Unsharp mask.
-/// <para>
-/// Mostly useful for recovering a little definition from a soft upscale, which is common when
-/// a 720p source is pushed into a 1080p frame.
-/// </para>
+/// Unsharp mask, mostly for recovering a little definition from a soft upscale such as a 720p
+/// source pushed into a 1080p frame.
 /// </summary>
 public sealed class SharpenStage : IVideoFilterStage
 {
@@ -40,12 +37,10 @@ public sealed class PixelateStage : IVideoFilterStage
     {
         var factor = Math.Clamp(context.Look.Pixelate, 1.1d, 16d);
 
-        // Both scales use nearest-neighbour: the downscale so blocks average cleanly, and the
-        // upscale so they stay hard-edged instead of being smoothed back into a blur.
-        //
-        // The target is computed in whole pixels rather than left as an iw/N expression so the
-        // result is always even. An odd intermediate dimension makes the yuv420p conversion at
-        // the end of the graph fail outright.
+        // Nearest-neighbour both ways: down so blocks average cleanly, up so they stay
+        // hard-edged instead of being smoothed back into a blur. Whole pixels rather than an
+        // iw/N expression so the result is always even — an odd intermediate dimension makes the
+        // yuv420p conversion at the end of the graph fail outright.
         var width = Even(context.Format.Width / factor);
         var height = Even(context.Format.Height / factor);
 
@@ -64,9 +59,9 @@ public sealed class PixelateStage : IVideoFilterStage
 /// <summary>
 /// Fades every clip in from and out to black.
 /// <para>
-/// Not the same thing as <c>--transition</c>. A transition overlaps two neighbouring clips and
-/// forces the filter-graph stitcher; this happens inside each segment during extraction, so the
-/// finished render can still be joined by a stream copy.
+/// Not <c>--transition</c>: that overlaps two neighbouring clips and forces the filter-graph
+/// stitcher, whereas this happens inside each segment during extraction, so the finished render
+/// can still be joined by a stream copy.
 /// </para>
 /// </summary>
 public sealed class FadeEdgesStage : IVideoFilterStage
@@ -101,16 +96,12 @@ public sealed class FadeEdgesStage : IVideoFilterStage
 /// <summary>
 /// Burns a credit or disclaimer line into a corner of the frame.
 /// <para>
-/// The text is passed to <c>drawtext</c> through <c>textfile=</c> rather than <c>text=</c>.
-/// That is not a stylistic preference: a film title is exactly the kind of string that contains
-/// the characters FFmpeg's filter grammar reserves. <c>Léon: The Professional</c> has a colon,
-/// <c>Ocean's Eleven</c> an apostrophe, and either one terminates the argument early and fails
-/// the whole graph. Escaping them correctly requires three simultaneous levels of quoting;
-/// reading the text from a file sidesteps all of it, and no user string can then break a render.
-/// </para>
-/// <para>
-/// <c>expansion=none</c> matters for the same reason: without it <c>%</c> and <c>{}</c> in a
-/// title are interpreted as strftime and expression syntax.
+/// The text goes to <c>drawtext</c> through <c>textfile=</c> rather than <c>text=</c> because
+/// film titles contain the characters FFmpeg's filter grammar reserves: the colon in
+/// <c>Léon: The Professional</c> or the apostrophe in <c>Ocean's Eleven</c> terminates the
+/// argument early and fails the whole graph, and escaping them correctly needs three
+/// simultaneous levels of quoting. <c>expansion=none</c> likewise stops <c>%</c> and <c>{}</c>
+/// in a title being read as strftime and expression syntax.
 /// </para>
 /// </summary>
 public sealed class AttributionStage : IVideoFilterStage
@@ -121,8 +112,7 @@ public sealed class AttributionStage : IVideoFilterStage
 
     /// <summary>
     /// Requires both the text and a materialised file for it. The extractor owns writing the
-    /// file, so a context without one simply skips the stage rather than falling back to
-    /// inline text that might not survive escaping.
+    /// file; without one the stage is skipped rather than falling back to inline text.
     /// </summary>
     public bool AppliesTo(FilterContext context) =>
         context.Look.HasAttribution && !string.IsNullOrWhiteSpace(context.AttributionTextPath);
@@ -133,9 +123,8 @@ public sealed class AttributionStage : IVideoFilterStage
         var height = context.Format.Height;
         var width = context.Format.Width;
 
-        // A comfortable fraction of the frame height, shrunk when the line is long enough that
-        // it would otherwise run off the side. drawtext cannot wrap, and a vertical frame is
-        // narrow, so a long title at 1/28th of the height would simply be cut off.
+        // A fraction of the frame height, shrunk for long lines: drawtext cannot wrap, so a long
+        // title at 1/28th of the height would simply run off the side of a narrow frame.
         var text = look.Attribution!.Trim();
         var byHeight = height / 28d;
         var byWidth = 1.7d * width / Math.Max(text.Length, 1);

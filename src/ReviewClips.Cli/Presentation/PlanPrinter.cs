@@ -132,9 +132,8 @@ internal static class PlanPrinter
     }
 
     /// <summary>
-    /// Summarizes what chapter filtering did, or null when no source has chapters. Reports the
-    /// excluded titles by name: a silent exclusion of ten minutes of a film is exactly the kind
-    /// of thing that should not be invisible.
+    /// Summarizes what chapter filtering did, or null when no source has chapters. Excluded titles
+    /// are named rather than counted, so the exclusion is never silent.
     /// </summary>
     internal static string? DescribeChapters(RenderPlan plan)
     {
@@ -153,8 +152,7 @@ internal static class PlanPrinter
         if (skipped.Count == 0)
         {
             // "none matched" would be a lie when matching never ran: --chapters off with no
-            // --skip-chapter leaves no patterns at all, and a reader is entitled to know the
-            // difference between a filter that found nothing and a filter that was switched off.
+            // --skip-chapter leaves no patterns at all, so the two cases must read differently.
             if (patterns.Count == 0)
             {
                 return $"{total} marker(s), skipping disabled (--chapters off)";
@@ -186,13 +184,9 @@ internal static class PlanPrinter
     }
 
     /// <summary>
-    /// The source-usage row.
-    /// <para>
-    /// The percentage quoted is the peak across sources, matching what the guardrail tests, so
-    /// a warning can never cite a figure the summary did not show. With several sources the
-    /// heaviest is named, because an aggregate figure would be the one number that cannot
-    /// trigger anything.
-    /// </para>
+    /// The source-usage row. The percentage quoted is the peak across sources, matching what the
+    /// guardrail tests, so a warning can never cite a figure the summary did not show; with
+    /// several sources the heaviest is named.
     /// </summary>
     private static string DescribeUsage(RenderPlan plan)
     {
@@ -222,10 +216,8 @@ internal static class PlanPrinter
             parts.Add($"darken {look.Darken:0.##}");
         }
 
-        // Grayscale is reported instead of a saturation figure, not alongside one. Reading
-        // EffectiveSaturation is what keeps this honest: printing look.Saturation would name a
-        // number the filter graph overrode, and the summary is the only account of the render
-        // the user gets before it runs.
+        // Grayscale replaces the saturation figure rather than joining it. EffectiveSaturation is
+        // read, not look.Saturation, so the summary never names a number the filter graph overrode.
         if (look.Grayscale)
         {
             parts.Add("grayscale");

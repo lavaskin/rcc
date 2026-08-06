@@ -131,16 +131,10 @@ internal sealed class ClipRequestBuilder
             Contrast = parse.GetValue(_options.Contrast) ?? request.Look.Contrast,
             Gamma = parse.GetValue(_options.Gamma) ?? request.Look.Gamma,
 
-            // An explicit --saturation settles the grayscale question by itself: asking for a
-            // specific amount of color is incompatible with asking for none, and the typed
-            // value is the more recent instruction. Resolving it here rather than leaving both
-            // set means the request that reaches the renderer, the summary and the manifest
-            // holds no contradiction for any of them to resolve differently.
-            //
-            // Toggle still runs first, and is not short-circuited past. It is the thing that
-            // refuses --grayscale alongside --no-grayscale, and that pair is a contradiction
-            // whatever --saturation goes on to decide -- silently accepting it here while every
-            // other --no- pair is refused would be the odd one out.
+            // An explicit --saturation wins: it is the more specific instruction, and settling it
+            // here means the renderer, the summary and the manifest all read the same answer.
+            // Toggle still runs first and is not short-circuited past, so --grayscale alongside
+            // --no-grayscale is refused like every other --no- pair.
             Grayscale = Toggle(parse, _options.Grayscale, _options.NoGrayscale, request.Look.Grayscale)
                 && parse.GetResult(_options.Saturation) is null,
             Blur = parse.GetValue(_options.Blur) ?? request.Look.Blur,
@@ -199,8 +193,8 @@ internal sealed class ClipRequestBuilder
             SpliceJitter = parse.GetValue(_options.SpliceJitter) ?? request.SpliceJitter,
             MaxDistinctClips = parse.GetValue(_options.MaxClips) ?? request.MaxDistinctClips,
 
-            // Taken as a percentage on the command line because that is how the guideline is
-            // always quoted, and stored as a fraction because that is what it is compared against.
+            // A percentage on the command line, stored as a fraction because that is what it is
+            // compared against.
             MaxSourceFraction = parse.GetValue(_options.MaxSourcePercent) is { } percent
                 ? percent / 100d
                 : request.MaxSourceFraction,
@@ -220,10 +214,9 @@ internal sealed class ClipRequestBuilder
             ManifestPath = parse.GetValue(_options.Manifest),
         };
 
-        // Only an explicit path is resolved here; a derived one is not. The derived name encodes
-        // the target duration, which --match-audio takes from the audio track during planning, so
-        // the name cannot be settled until the plan is. An empty path means "not chosen yet", and
-        // the commands fill it in through EnsureOutputPath once PlanAsync has returned.
+        // Only an explicit path is resolved here; a derived one cannot be settled until the plan
+        // is (see EnsureOutputPath). An empty path means "not chosen yet", and the commands fill
+        // it in through EnsureOutputPath once PlanAsync has returned.
         var output = outputOverride ?? parse.GetValue(_options.Output);
 
         result = result with
@@ -231,10 +224,8 @@ internal sealed class ClipRequestBuilder
             OutputPath = output is null ? string.Empty : Path.GetFullPath(output),
         };
 
-        // Validation messages name the flag a bound belongs to, which is the right hint when the
-        // value was typed and the wrong place to look when it came from a profile. The builder
-        // tracks no per-field provenance, so the profile is offered as a second candidate rather
-        // than asserted as the culprit.
+        // Validation messages name the flag a bound belongs to. The builder tracks no per-field
+        // provenance, so a profile is offered as a second candidate rather than named as the culprit.
         try
         {
             Validate(result);
@@ -254,14 +245,9 @@ internal sealed class ClipRequestBuilder
     /// Resolves a boolean look option that a profile may also set.
     /// <para>
     /// A bare <c>bool</c> flag cannot express "off", only "not mentioned", so ORing it with the
-    /// inherited value makes a profile's <c>true</c> permanent and breaks the precedence rule
-    /// the rest of this class follows. The paired <c>--no-</c> flag supplies the missing third
-    /// state, restoring "CLI beats profile beats default" for these the same as for every
-    /// nullable option.
-    /// </para>
-    /// <para>
-    /// Both flags together is a contradiction with no sensible reading, so it is refused rather
-    /// than silently resolved in one direction.
+    /// inherited value would make a profile's <c>true</c> permanent. The paired <c>--no-</c> flag
+    /// supplies the missing third state, restoring "CLI beats profile beats default". Both flags
+    /// together is a contradiction, so it is refused rather than resolved in one direction.
     /// </para>
     /// </summary>
     private static bool Toggle(ParseResult parse, Option<bool> on, Option<bool> off, bool inherited)
@@ -280,9 +266,9 @@ internal sealed class ClipRequestBuilder
     /// <summary>
     /// Resolves the audio mode.
     /// <para>
-    /// <c>--audio</c> is the one option here whose meaning depends on whether it was given a
-    /// value, so presence is read from the parse result rather than inferred from the value:
-    /// a null value means "bare <c>--audio</c>", which is not the same as absent.
+    /// <c>--audio</c>'s meaning depends on whether it was given a value, so presence is read from
+    /// the parse result rather than inferred from the value: a null value means bare
+    /// <c>--audio</c>, which is not the same as absent.
     /// </para>
     /// </summary>
     private AudioOptions ResolveAudio(ParseResult parse, AudioOptions inherited)
@@ -309,10 +295,9 @@ internal sealed class ClipRequestBuilder
     /// <summary>
     /// Rejects audio settings that cannot mean anything, before a render is planned.
     /// <para>
-    /// Separate from <see cref="Validate"/> because these checks need to know what the user
-    /// actually typed, not just what the settings resolved to: <c>--match-audio</c> with an
-    /// explicit <c>--duration</c> is a contradiction, but the resolved request cannot tell a
-    /// typed duration from the default one.
+    /// Separate from <see cref="Validate"/> because these checks need what the user actually
+    /// typed: <c>--match-audio</c> with an explicit <c>--duration</c> is a contradiction, but the
+    /// resolved request cannot tell a typed duration from the default one.
     /// </para>
     /// </summary>
     private void ValidateAudio(ParseResult parse, ClipRequest request)
@@ -369,11 +354,10 @@ internal sealed class ClipRequestBuilder
     /// <summary>
     /// Rejects a value outside <c>[min, max]</c>, and any value that is not a finite number.
     /// <para>
-    /// The finiteness test is why this is a helper rather than an inline range check. Every
-    /// comparison against NaN is false, so an out-of-range test such as
-    /// <c>if (x is &lt; 0d or &gt; 1d)</c> admits NaN instead of rejecting it, and
-    /// <c>System.CommandLine</c>'s <c>double</c> binder accepts both "nan" and "infinity". A NaN
-    /// that gets past here reaches FFmpeg as the literal string <c>NaN</c>, and as a source-usage
+    /// The finiteness test is why this is a helper rather than an inline range check.
+    /// <c>System.CommandLine</c>'s <c>double</c> binder accepts "nan" and "infinity", and every
+    /// comparison against NaN is false, so <c>if (x is &lt; 0d or &gt; 1d)</c> admits NaN instead
+    /// of rejecting it. A NaN reaches FFmpeg as the literal <c>NaN</c>, and as a source-usage
     /// limit it switches the guardrail off entirely, since <c>Limit &gt; 0d</c> is false for it.
     /// </para>
     /// </summary>
@@ -398,9 +382,9 @@ internal sealed class ClipRequestBuilder
     /// The single funnel every request passes through, whatever set its values.
     /// <para>
     /// Phrased against the resolved <see cref="ClipRequest"/> rather than the parse result, so a
-    /// value from a profile is held to the same bounds as one typed on the command line. A profile
-    /// is a config file rather than a trusted source, and anything it sets that escapes a bound
-    /// here surfaces as a mid-render FFmpeg failure instead of a usage error.
+    /// profile value is held to the same bounds as a typed one. A profile is a config file, not a
+    /// trusted source, and anything it sets that escapes a bound here surfaces as a mid-render
+    /// FFmpeg failure instead of a usage error.
     /// </para>
     /// </summary>
     private static void Validate(ClipRequest request)
@@ -429,9 +413,8 @@ internal sealed class ClipRequestBuilder
             throw new CliUsageException("--splice-jitter cannot be negative.");
         }
 
-        // A non-positive dimension reaches FFmpeg as scale=-100:-50 and fails there. Only a
-        // profile can produce one, since TryParseResolution rejects it on the CLI path, but the
-        // bound belongs here so both paths answer the same way.
+        // A non-positive dimension reaches FFmpeg as scale=-100:-50 and fails there. Only a profile
+        // can produce one, but the bound belongs here so both paths answer the same way.
         if (request.Format.Width <= 0 || request.Format.Height <= 0)
         {
             throw new CliUsageException(
@@ -466,9 +449,8 @@ internal sealed class ClipRequestBuilder
         // negative is not a slower zoom, it is an inverted or collapsed frame.
         RequireAbove(request.Look.ZoomEnd, 0d, 8d, "--zoom must be between 0 and 8.");
 
-        // 0 is "off" and is the default; anything else has to be a real magnification factor.
-        // The floor is 1.1 to match both the help text and the value PixelateStage clamps to, so
-        // an accepted value is never quietly adjusted downstream.
+        // 0 is "off" and is the default. The 1.1 floor matches both the help text and the value
+        // PixelateStage clamps to, so an accepted value is never quietly adjusted downstream.
         if (request.Look.Pixelate != 0d)
         {
             RequireRange(request.Look.Pixelate, 1.1d, 16d, "--pixelate must be 0, or between 1.1 and 16.");
@@ -479,16 +461,12 @@ internal sealed class ClipRequestBuilder
             throw new CliUsageException("--fade-edges cannot be negative.");
         }
 
-        // Half, not the whole length: --fade-edges is applied twice, once at each end, so a
-        // value above half the clip makes the two fades meet in the middle and the clip never
-        // reaches full brightness.
-        //
-        // Measured against the shortest clip the settings can produce, not against --splice.
-        // --splice is a midpoint that --splice-jitter varies each clip around, so the nominal
-        // figure describes no clip in particular and the short ones are where a fade runs out of
-        // room. FadeEdgesStage clamps whatever it is given, so a bound checked against the
-        // midpoint would admit values the stage then quietly reduces, while the plan summary goes
-        // on reporting the figure that was asked for.
+        // Half, not the whole length: --fade-edges applies at both ends, so anything longer makes
+        // the two fades meet and the clip never reaches full brightness. Measured against the
+        // shortest clip the settings can produce, not the nominal --splice that --splice-jitter
+        // varies around: FadeEdgesStage clamps whatever it is given, so a bound checked against the
+        // midpoint would admit values the stage quietly reduces while the summary reports the
+        // figure that was asked for.
         if (request.Look.HasFadeEdges)
         {
             var shortest = ShortestSegment(request);
@@ -532,18 +510,13 @@ internal sealed class ClipRequestBuilder
     }
 
     /// <summary>
-    /// The shortest clip <see cref="SplicePlanner"/> can produce for these settings.
+    /// The shortest clip <see cref="SplicePlanner"/> can produce for these settings: the nominal
+    /// splice less the jitter, floored at the planner's own minimum.
     /// <para>
-    /// Mirrors the planner's own jitter clamp: the offset is bounded so a clip can never fall
-    /// below the planner's floor, so the shortest is the nominal splice less the jitter, and never
-    /// less than that floor.
-    /// </para>
-    /// <para>
-    /// The floor rises to twice the transition when one is in use, so this has to ask for it the
-    /// same way the planner does rather than assuming <see cref="SplicePlanner.MinimumSegment"/>.
-    /// Otherwise the two disagree in the direction that matters: this would report a shorter
-    /// clip than any the planner will emit, and admit a <c>--fade-edges</c> the render then
-    /// clamps while the summary goes on quoting the value that was asked for.
+    /// That floor rises to twice the transition when one is in use, so it is asked for the same
+    /// way the planner asks rather than assumed to be <see cref="SplicePlanner.MinimumSegment"/>.
+    /// Otherwise this reports a shorter clip than any the planner emits, and admits a
+    /// <c>--fade-edges</c> the render then clamps.
     /// </para>
     /// </summary>
     private static TimeSpan ShortestSegment(ClipRequest request)
@@ -561,9 +534,8 @@ internal sealed class ClipRequestBuilder
     /// <para>
     /// Takes the request the pipeline settled on rather than the one <see cref="Build"/> returned.
     /// The derived name states the render's duration, and <c>--match-audio</c> replaces that
-    /// duration during planning, so a name taken from the pre-plan request describes a render that
-    /// is not the one about to be produced — and two tracks of different lengths would derive the
-    /// same name and write over each other.
+    /// duration during planning, so a pre-plan name describes the wrong render and two tracks of
+    /// different lengths would derive the same name and write over each other.
     /// </para>
     /// <para>
     /// Idempotent, so a caller that has already resolved a path can pass it through unexamined.
@@ -589,13 +561,12 @@ internal sealed class ClipRequestBuilder
     /// distinguish one render from another, e.g. <c>Alien-bg-shorts-1080x1920-1m30s-q20.mp4</c>.
     /// <para>
     /// Source, profile, resolution, runtime and quality are always present. Everything else
-    /// appears only when it differs from the built-in default, so an ordinary render keeps a
-    /// short name while an unusual one carries the reason it looks different. Renders that
-    /// differ in any named setting no longer overwrite each other.
+    /// appears only when it differs from the built-in default, so renders that differ in any
+    /// named setting do not overwrite each other.
     /// </para>
     /// <para>
-    /// Exposed so <c>batch</c> can re-derive a name per variant: each one gets its own seed,
-    /// and a name carrying the template's seed would be a lie.
+    /// Exposed so <c>batch</c> can re-derive a name per variant: each one gets its own seed, and
+    /// a name carrying the template's seed would be a lie.
     /// </para>
     /// </summary>
     internal static string DeriveOutputName(ClipRequest request, string? profileName)

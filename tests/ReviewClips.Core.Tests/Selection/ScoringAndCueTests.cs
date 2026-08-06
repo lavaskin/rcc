@@ -165,7 +165,6 @@ public class SceneSelectorTests
 
         foreach (var segment in segments)
         {
-            // Every start should be a shot boundary plus the lead-in.
             var boundaries = cuts.Append(0d);
             boundaries.ShouldContain(
                 b => Math.Abs(segment.Start.TotalSeconds - (b + 0.35)) < 0.01

@@ -111,9 +111,8 @@ public class ClipSequencerTests
 
     /// <summary>
     /// The <c>--max-clips</c> path carries the same trimmed-tail hazard as
-    /// <see cref="SplicePlanner.PlanForOutput"/> and is swept for the same reason: it was a
-    /// four-tuple spot check, and <c>-d 120s --max-clips 8 --profile kenburns</c> was undershooting
-    /// on two seeds in five while it passed.
+    /// <see cref="SplicePlanner.PlanForOutput"/>, and is swept for the same reason: the failure
+    /// depends on the (target, seed) pair, so a spot check cannot be trusted to contain one.
     /// </summary>
     [Theory]
     [InlineData(0.4)]
@@ -143,10 +142,9 @@ public class ClipSequencerTests
     }
 
     /// <summary>
-    /// The mechanism, asserted directly: the trimmed final slot no longer decides how much
-    /// overlap the other joins get, so the applied transition is a function of the settings
-    /// rather than of the target and the seed. That independence is what makes
-    /// <see cref="ClipSequencer.FillForOutput"/>'s compensation loop converge.
+    /// The mechanism, asserted directly: the trimmed final slot no longer decides the overlap
+    /// the other joins get, so the applied transition depends on the settings alone. That
+    /// independence is what makes <see cref="ClipSequencer.FillForOutput"/>'s loop converge.
     /// </summary>
     [Fact]
     public void FillForOutput_AppliesTheSameTransitionWhateverTheTargetAndSeed()

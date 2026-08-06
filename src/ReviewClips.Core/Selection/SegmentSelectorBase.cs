@@ -59,9 +59,8 @@ public abstract class SegmentSelectorBase : ISegmentSelector
             picked.AddRange(PickFrom(pools[i], quotas[i], context, window, picked));
         }
 
-        // Second pass: if some pools under-delivered, let the others make up the shortfall.
-        // The running list of picks is passed in so spacing is enforced against everything
-        // chosen so far, not just against this call's own selections.
+        // Second pass: pools that under-delivered are made up by the others. Passing the running
+        // list enforces spacing against every pick so far, not just this call's own.
         if (picked.Count < context.SegmentCount)
         {
             foreach (var pool in pools)
@@ -109,17 +108,15 @@ public abstract class SegmentSelectorBase : ISegmentSelector
     /// Chooses up to <paramref name="wanted"/> further candidates from one source, spread
     /// across the usable footage.
     /// <para>
-    /// Uses stratified sampling rather than plain score-greedy selection. Greedy picking with a
-    /// relaxing minimum gap collapses badly: when the requested spacing cannot be satisfied it
-    /// degrades to "take the N highest scores", and because scores are spatially correlated
-    /// those all come from the same few seconds of film. Dividing the eligible footage into one
-    /// stratum per required segment and taking the best candidate from each guarantees coverage
-    /// while still preferring good footage locally.
+    /// Stratified rather than score-greedy: greedy picking degrades to "take the N highest
+    /// scores" once the requested gap cannot be met, and spatially correlated scores put those
+    /// all in the same few seconds. One stratum per required segment, best candidate from each,
+    /// guarantees coverage while still preferring good footage locally.
     /// </para>
     /// </summary>
     /// <param name="alreadyPicked">
-    /// Everything chosen so far, across all sources. Used only as a spacing baseline and to
-    /// avoid duplicates; these do not count toward <paramref name="wanted"/>.
+    /// Everything chosen so far, across all sources. A spacing baseline and duplicate guard
+    /// only; these do not count toward <paramref name="wanted"/>.
     /// </param>
     private List<SegmentCandidate> PickFrom(
         CandidatePool pool,
@@ -143,8 +140,8 @@ public abstract class SegmentSelectorBase : ISegmentSelector
 
         var totalEligible = pool.Eligible.TotalDuration;
 
-        // The widest spacing that is arithmetically achievable. Asking for more than this is
-        // not an error, it is simply impossible, so clamp instead of failing or collapsing.
+        // The widest spacing that is arithmetically achievable; a larger request is clamped
+        // rather than treated as an error.
         var feasibleGap = wanted > 1
             ? TimeSpan.FromSeconds(totalEligible.TotalSeconds / wanted)
             : TimeSpan.Zero;
@@ -153,15 +150,13 @@ public abstract class SegmentSelectorBase : ISegmentSelector
             ? context.Options.MinGap
             : feasibleGap;
 
-        // Hard floor, never relaxed: two picks closer together than one segment length would
-        // overlap and put literally the same footage on screen twice. Returning fewer segments
-        // and warning is strictly better than emitting a duplicate.
+        // Hard floor, never relaxed: picks closer than one segment length overlap and repeat
+        // the same footage. Returning fewer segments is preferred to emitting a duplicate.
         if (preferredGap < window)
         {
             preferredGap = window;
         }
 
-        // Spacing is evaluated against prior picks as well as new ones.
         var spacing = alreadyPicked.ToList();
         var accepted = new List<SegmentCandidate>(wanted);
 
@@ -224,9 +219,8 @@ public abstract class SegmentSelectorBase : ISegmentSelector
             }
         }
 
-        // Strata can be empty when footage is unevenly distributed. Backfill by score from
-        // whatever is left, keeping the non-overlap floor so a constrained source yields fewer
-        // clips rather than repeated ones.
+        // Strata can be empty when footage is unevenly distributed. Backfill by score, keeping
+        // the non-overlap floor so a constrained source yields fewer clips, not repeated ones.
         if (accepted.Count < wanted)
         {
             foreach (var candidate in Rank(available, context))
@@ -287,9 +281,8 @@ public abstract class SegmentSelectorBase : ISegmentSelector
                 Start = candidate.Start,
                 Duration = duration,
 
-                // Placement above reserved the retimed length, so the segment has to carry the
-                // factor that produced it: everything downstream that asks how much source this
-                // clip touches gets the same answer selection just used.
+                // Placement reserved the retimed length, so the segment carries the factor that
+                // produced it: downstream readings of source usage match the one selection used.
                 SpeedFactor = context.SpeedFactor,
                 Score = candidate.Score,
                 Reason = candidate.Reason,

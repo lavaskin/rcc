@@ -12,8 +12,7 @@ namespace ReviewClips.Ffmpeg.Analysis;
 /// black and frozen stretches.
 /// <para>
 /// One pass suffices because <c>scdet</c> exports <c>lavfi.scd.mafd</c> for every frame, which
-/// doubles as a motion-energy metric. The stream is decimated to a few frames per second and
-/// downscaled first, which is what makes scanning a feature film affordable.
+/// doubles as a motion-energy metric. The stream is decimated and downscaled first.
 /// </para>
 /// <para>
 /// Output routing is specific: per-frame metadata streams over stdout, while the detectors
@@ -137,8 +136,7 @@ public sealed class FfmpegMediaAnalyzer : IMediaAnalyzer
 
         if (settings.UseHardwareDecode)
         {
-            // Measured to be a net loss on short inputs: CUDA context setup costs more than it
-            // saves. Only worth enabling for long scans, hence opt-in.
+            // CUDA context setup costs more than it saves on short inputs, hence opt-in.
             arguments.AddRange(["-hwaccel", "cuda"]);
         }
 

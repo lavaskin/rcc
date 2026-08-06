@@ -8,10 +8,9 @@ namespace ReviewClips.Core.Selection;
 /// The default strategy. Prefers shot-aligned windows whose motion sits in a "pleasant"
 /// band and which are evenly paced.
 /// <para>
-/// Every threshold is relative to the title's own median motion, because absolute
-/// frame-difference values differ by an order of magnitude between a slow drama and an
-/// action film. Expect to tune <see cref="ScoringOptions"/> per genre; there is no single
-/// correct value for "interesting".
+/// Every threshold is relative to the title's own median motion: absolute frame-difference
+/// values differ by an order of magnitude between a slow drama and an action film, so
+/// <see cref="ScoringOptions"/> has no single correct value across genres.
 /// </para>
 /// </summary>
 public sealed class ScoredSegmentSelector : SegmentSelectorBase

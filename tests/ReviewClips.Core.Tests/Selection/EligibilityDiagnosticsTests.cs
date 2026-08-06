@@ -7,10 +7,9 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Tests.Selection;
 
 /// <summary>
-/// The "no usable segments" message used to name every filter that happened to be switched on.
-/// Since black and frozen rejection are on by default, a render refused because <c>--range</c>
-/// named a two-second window was advised to try <c>--no-reject-black</c>: wrong, and expensive
-/// to act on. These tests hold the explanation to the filter that is actually responsible.
+/// The "no usable segments" message used to name every filter that happened to be switched on,
+/// several of which are on by default. These tests hold the explanation to the filter that is
+/// actually responsible.
 /// </summary>
 public class EligibilityDiagnosticsTests
 {
@@ -110,8 +109,9 @@ public class EligibilityDiagnosticsTests
     }
 
     /// <summary>
-    /// Detection that is on by default must not be blamed for a restriction the user typed.
-    /// This is the case that motivated measuring the cause instead of listing suspects.
+    /// A render refused by a two-second <c>--range</c> was advised to try
+    /// <c>--no-reject-black</c>: wrong, and expensive to act on. Detection that is on by default
+    /// must not be blamed for a restriction the user typed.
     /// </summary>
     [Fact]
     public void DefaultOnDetectorsAreNotBlamedForAUserSuppliedRestriction()

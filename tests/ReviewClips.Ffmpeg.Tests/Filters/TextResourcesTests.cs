@@ -3,13 +3,9 @@ using ReviewClips.Ffmpeg.Filters;
 namespace ReviewClips.Ffmpeg.Tests.Filters;
 
 /// <summary>
-/// Content-addressed materialisation of attribution text.
-/// <para>
-/// The whole design rests on claims nothing was checking: that identical text always resolves
-/// to the same path, that parallel extractions of one render therefore need no coordination,
-/// and that what lands on disk is exactly the bytes drawtext should read. Each of those is
-/// asserted here rather than assumed.
-/// </para>
+/// Content-addressed materialisation of attribution text. The design rests on three claims:
+/// identical text always resolves to the same path, parallel extractions therefore need no
+/// coordination, and what lands on disk is exactly the bytes drawtext should read.
 /// </summary>
 public class TextResourcesTests
 {
@@ -51,8 +47,8 @@ public class TextResourcesTests
     [Fact]
     public void TextWithReservedCharactersRoundTripsUntouched()
     {
-        // Reading from a file is the whole reason these need no escaping; the corollary is that
-        // nothing may be escaped on the way in either.
+        // Reading from a file is why these need no escaping, and why nothing may be escaped on
+        // the way in either.
         const string Text = "100% [practical] effects: no CGI, 'honest', back\\slash {here}";
 
         File.ReadAllText(TextResources.Materialize(Text)).ShouldBe(Text);
@@ -70,8 +66,7 @@ public class TextResourcesTests
     public void ATruncatedFileIsRewrittenRatherThanReused()
     {
         // A run killed mid-write leaves a short file. The bare existence check this replaced
-        // would have reused it silently, for ever, and the caption would render wrong with no
-        // clue as to why.
+        // would have reused it silently, for ever.
         const string Text = "Clip from The Insider (1999), dir. Michael Mann";
 
         var path = TextResources.Materialize(Text);
@@ -86,9 +81,8 @@ public class TextResourcesTests
     [Fact]
     public void AFailedWriteThrowsRatherThanReturningAPathToNothing()
     {
-        // The caller drops this straight into drawtext's textfile=, and nothing downstream
-        // checks that the file exists. Swallowing the write failure and returning the path
-        // anyway turns a full disk into an opaque FFmpeg error several minutes into a render.
+        // Nothing downstream checks the file exists, so swallowing the write failure and
+        // returning the path turns a full disk into an opaque FFmpeg error minutes into a render.
         var text = $"Unwritable caption {Guid.NewGuid():N}";
 
         // A directory sitting where the file belongs fails the move for the same reasons a
@@ -132,9 +126,7 @@ public class TextResourcesTests
     [Fact]
     public void ConcurrentCallersAllGetTheSameIntactFile()
     {
-        // The claim the doc comment makes: parallel extractions of one render need no
-        // coordination. A staging-then-move that was not atomic would show up here as either a
-        // throw or a short read.
+        // A staging-then-move that was not atomic would show up here as a throw or a short read.
         var text = $"Clip from Collateral (2004) {Guid.NewGuid():N}";
 
         var paths = new string[32];
@@ -216,9 +208,8 @@ public class TextResourcesTests
 
     /// <summary>
     /// Reuse has to count as use, or the age records when a caption was first written rather than
-    /// when it was last needed. A credit line used in every render for a year would otherwise be
-    /// swept seven days in — and, worse, could be swept out from under the render using it, since
-    /// reuse is precisely the path that does not rewrite the file.
+    /// when it was last needed: a long-lived credit line could then be swept out from under the
+    /// render using it, since reuse is the one path that does not rewrite the file.
     /// </summary>
     [Fact]
     public void ReusingAFileMarksItAsUsed()

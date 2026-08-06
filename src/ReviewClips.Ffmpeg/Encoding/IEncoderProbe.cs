@@ -7,12 +7,10 @@ namespace ReviewClips.Ffmpeg.Encoding;
 /// <summary>
 /// Answers whether a named encoder actually works on this machine.
 /// <para>
-/// Shared by the encoder selector and by <c>rcc doctor</c> on purpose. Presence in
-/// <c>ffmpeg -encoders</c> is not sufficient — NVENC is compiled into most builds but fails at
-/// runtime without a suitable driver or GPU, or when every session is already in use — so the
-/// only reliable test is to encode something. Because the diagnostic and the render path ask
-/// the same question the same way, <c>doctor</c> reports what <c>generate</c> will really do
-/// rather than what happens to be compiled in.
+/// Presence in <c>ffmpeg -encoders</c> is not sufficient: NVENC is compiled into most builds but
+/// fails at runtime without a suitable driver or GPU, or when every session is already in use, so
+/// the only reliable test is to encode something. Shared by the encoder selector and by
+/// <c>rcc doctor</c>, so the diagnostic reports what a render will really do.
 /// </para>
 /// </summary>
 public interface IEncoderProbe

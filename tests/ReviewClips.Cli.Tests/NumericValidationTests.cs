@@ -8,9 +8,7 @@ namespace ReviewClips.Cli.Tests;
 /// </summary>
 public class NumericValidationTests
 {
-    /// <summary>
-    /// Every option that takes a double, with a value that is out of range in the ordinary way.
-    /// </summary>
+    /// <summary>Every option that takes a double, with a value out of range in the ordinary way.</summary>
     [Theory]
     [InlineData("--fps", "0")]
     [InlineData("--fps", "500")]
@@ -40,14 +38,10 @@ public class NumericValidationTests
     }
 
     /// <summary>
-    /// The same options, given NaN or infinity.
-    /// <para>
-    /// Reachable from the command line: <c>System.CommandLine</c>'s double binder parses both.
-    /// They need their own coverage because every comparison against NaN is false, so a bound
-    /// expressed as <c>is &lt; 0d or &gt; 1d</c> admits NaN rather than rejecting it. A NaN that
-    /// gets through reaches FFmpeg as the literal <c>NaN</c>, and as <c>--max-source-percent</c>
-    /// it disables the guardrail outright, since <c>Limit &gt; 0d</c> is false for it too.
-    /// </para>
+    /// The same options, given NaN or infinity. <c>System.CommandLine</c>'s double binder parses
+    /// both, and every comparison against NaN is false, so a bound expressed as
+    /// <c>is &lt; 0d or &gt; 1d</c> admits NaN rather than rejecting it. One that gets through
+    /// reaches FFmpeg as the literal <c>NaN</c>.
     /// </summary>
     [Theory]
     [InlineData("--fps")]
@@ -73,8 +67,8 @@ public class NumericValidationTests
     }
 
     /// <summary>
-    /// The specific case that made NaN worse than a crash: a guardrail turned off by a value the
-    /// tool accepted without comment.
+    /// Worse than a crash: <c>Limit &gt; 0d</c> is false for NaN, so a NaN that got through would
+    /// disable the guardrail outright, and the tool would accept it without comment.
     /// </summary>
     [Fact]
     public void NaNCannotBeUsedToDisableTheSourceUsageGuard()
@@ -94,8 +88,8 @@ public class NumericValidationTests
     {
         using var harness = new RequestBuilderHarness();
 
-        // The help text says 1.1-16 and the stage clamps to 1.1, so validation has to agree with
-        // both: a value it accepts must be one the stage will use unchanged.
+        // The help text says 1.1-16 and the stage clamps to 1.1, so a value validation accepts
+        // must be one the stage will use unchanged.
         harness.Rejection("-d", "20s", "--pixelate", value)
             .ShouldContain("--pixelate");
     }
@@ -136,9 +130,8 @@ public class NumericValidationTests
     // --- Profile-supplied values -------------------------------------------
 
     /// <summary>
-    /// A profile is a config file, not a trusted source. These values never pass through the CLI
-    /// parsers, so before validation moved onto the resolved request they reached FFmpeg unchecked
-    /// and failed there — as a tool error, several hundred encoded frames later.
+    /// A profile is a config file, not a trusted source: its values never pass through the CLI
+    /// parsers, so validation has to run on the resolved request rather than at bind time.
     /// </summary>
     [Fact]
     public void ANegativeResolutionFromAProfileIsRejected()
@@ -180,9 +173,7 @@ public class NumericValidationTests
             .ShouldContain("--splice-jitter");
     }
 
-    /// <summary>
-    /// Naming only the flag sends the user to look for something they never typed.
-    /// </summary>
+    /// <summary>Naming only the flag sends the user to look for something they never typed.</summary>
     [Fact]
     public void ARejectionCausedByAProfileNamesTheProfile()
     {

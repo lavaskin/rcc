@@ -602,7 +602,7 @@ public class TreatmentStageTests
     {
         var graph = Build(LookOptions.None with { Attribution = "Clip from Heat (1995)" });
 
-        // The whole point: no user string ever reaches the filter grammar.
+        // No user string ever reaches the filter grammar.
         graph.ShouldContain("drawtext=textfile=");
         graph.ShouldNotContain("Heat");
     }
@@ -692,7 +692,7 @@ public class TreatmentStageTests
         var stages = Stages(look);
         var attribution = stages.ToList().IndexOf("attribution");
 
-        // A credit line exists to be read. Anything that obscures the frame must precede it.
+        // Anything that obscures the frame must precede the credit line.
         foreach (var obscuring in new[] { "blur", "grain", "pixelate", "vignette" })
         {
             stages.ToList().IndexOf(obscuring).ShouldBeLessThan(attribution);
@@ -719,8 +719,8 @@ public class TreatmentStageTests
     [Fact]
     public void Grayscale_WinsOverAnExplicitSaturation()
     {
-        // The more specific request wins; the two only ever coincide when a profile set one
-        // and the user then asked for the other.
+        // The more specific request wins; the two coincide only when a profile set one and the
+        // user then asked for the other.
         var graph = Build(LookOptions.None with { Grayscale = true, Saturation = 1.4 });
 
         graph.ShouldContain("saturation=0");
@@ -731,7 +731,7 @@ public class TreatmentStageTests
     public void Darken_IsStillMultiplicativeAndNotAnEqBrightnessOffset()
     {
         // Guards the reasoning in LookStages.cs: eq=brightness subtracts a constant and crushes
-        // dark footage to black, which is precisely the port that was rejected.
+        // dark footage to black.
         var graph = Build(LookOptions.None with { Darken = 0.45 });
 
         graph.ShouldContain("lutyuv=y=minval+(val-minval)*0.55");

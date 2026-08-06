@@ -2,9 +2,7 @@ using ReviewClips.Core.Options;
 
 namespace ReviewClips.Cli.Profiles;
 
-/// <summary>
-/// The built-in presets, plus any added or overridden in <c>appsettings.json</c>.
-/// </summary>
+/// <summary>The built-in presets, plus any added or overridden in <c>appsettings.json</c>.</summary>
 public sealed class ProfileLibrary
 {
     private readonly Dictionary<string, RenderProfile> _profiles;

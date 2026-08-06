@@ -5,11 +5,8 @@ using ReviewClips.Ffmpeg.Diagnostics;
 namespace ReviewClips.Ffmpeg.Tests.Integration;
 
 /// <summary>
-/// Runs the doctor's inspection against the real FFmpeg install.
-/// <para>
-/// The point of these is that the report has to agree with reality. A doctor that cheerfully
-/// reports a working environment while <c>generate</c> fails is worse than no doctor at all.
-/// </para>
+/// Runs the doctor's inspection against the real FFmpeg install. The report has to agree with
+/// reality, or it says the environment works while <c>generate</c> fails.
 /// </summary>
 [Collection(FfmpegTestGroup.Name)]
 public class EnvironmentInspectorTests
@@ -60,9 +57,8 @@ public class EnvironmentInspectorTests
 
         var report = await Inspector().InspectAsync(TestContext.Current.CancellationToken);
 
-        // Only the required tier is asserted unconditionally. Any build that can run this suite
-        // at all has these, and FilterGraphExecutionTests exercises them for real against the
-        // same binary, so a filter reported missing here would have failed there first.
+        // Only the required tier is asserted unconditionally: any build that can run this suite
+        // at all has these.
         report.Filters.Missing.ShouldBeEmpty();
         report.Filters.Present.ShouldContain("scale");
         report.Filters.Present.ShouldContain("lutyuv");
@@ -116,9 +112,8 @@ public class EnvironmentInspectorTests
 
         var report = await Inspector().InspectAsync(TestContext.Current.CancellationToken);
 
-        // Unconditional on purpose. Any FFmpeg complete enough to have produced this fixture's
-        // media is one rcc can render with, whatever optional pieces it was built without —
-        // and if a stripped-down build reported itself unusable here, that would be the bug.
+        // Unconditional on purpose: any FFmpeg complete enough to have produced this fixture's
+        // media is one rcc can render with, whatever optional pieces it was built without.
         report.IsUsable.ShouldBeTrue();
     }
 
@@ -181,9 +176,8 @@ public class EnvironmentInspectorTests
     [Fact]
     public async Task ClearCacheLeavesFilesItDoesNotOwn()
     {
-        // The directory comes from configuration and is used verbatim, so --clear-cache must
-        // not be a recursive delete of whatever the user pointed it at. Nothing here asks for
-        // confirmation, which makes the blast radius the whole safety story.
+        // The directory comes from configuration, is used verbatim and nothing asks for
+        // confirmation, so --clear-cache must not recursively delete what the user pointed at.
         var directory = _fixture.PathFor("cache_with_neighbours");
         Directory.CreateDirectory(directory);
 
@@ -260,10 +254,8 @@ public class EnvironmentInspectorTests
     [Fact]
     public async Task ReportsABinaryThatLaunchesButFailsAsUnavailable()
     {
-        // Being able to start a process is not the same as having a working FFmpeg. A build
-        // missing a shared library, or one for the wrong architecture, execs fine and then
-        // exits non-zero — and a green row above a render that cannot start is the one thing
-        // doctor must never print.
+        // A build missing a shared library, or one for the wrong architecture, execs fine and
+        // then exits non-zero. Doctor must not print a green row above a render that cannot start.
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Needs a POSIX shell script.");
 
         var stub = _fixture.PathFor("failing_ffmpeg");

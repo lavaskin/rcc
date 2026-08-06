@@ -11,11 +11,11 @@ public interface IMediaProbe
     Task<MediaInfo> ProbeAsync(string path, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Reads only the container duration.
+    /// Reads only the container duration; this is what <c>--match-audio</c> asks.
     /// <para>
     /// Separate from <see cref="ProbeAsync"/> because <see cref="MediaInfo"/> requires a video
     /// stream — width, height, frame rate and pixel format are all non-nullable — so a bare
-    /// <c>.wav</c> cannot go through it. This is what <c>--match-audio</c> asks.
+    /// <c>.wav</c> cannot go through it.
     /// </para>
     /// </summary>
     Task<TimeSpan> ProbeDurationAsync(string path, CancellationToken cancellationToken);

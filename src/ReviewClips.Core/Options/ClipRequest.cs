@@ -16,20 +16,13 @@ public sealed record ClipRequest
     /// <summary>Nominal length of each spliced segment.</summary>
     public TimeSpan SpliceLength { get; init; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>
-    /// Random variation applied to each splice length, plus or minus. A perfectly regular
-    /// cadence is noticeably robotic, so a little jitter reads as a human edit.
-    /// </summary>
+    /// <summary>Random variation applied to each splice length, plus or minus, so the cadence is irregular.</summary>
     public TimeSpan SpliceJitter { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Caps how many <em>distinct</em> clips are cut, repeating them to fill the runtime.
-    /// <c>null</c> means every slot gets its own clip.
-    /// <para>
-    /// This decouples the length of the render from the amount of source footage consumed.
-    /// A 16-minute render normally takes over 17 minutes of the original; capping at 50 clips
-    /// takes about 4 minutes of it instead.
-    /// </para>
+    /// Caps how many <em>distinct</em> clips are cut, repeating them to fill the runtime, which
+    /// decouples render length from the amount of source consumed. <c>null</c> gives every slot
+    /// its own clip.
     /// </summary>
     public int? MaxDistinctClips { get; init; }
 
@@ -41,12 +34,9 @@ public sealed record ClipRequest
     public double MaxSourceFraction { get; init; } = Planning.SourceUsageGuard.DefaultLimit;
 
     /// <summary>
-    /// Turn <see cref="MaxSourceFraction"/> from a warning into a refusal.
-    /// <para>
-    /// Off by default. A hard failure at 10% refuses ordinary short renders outright — a 30s
-    /// background track cut from a three-minute source is 16.7% and would simply not run — so
-    /// the default surfaces the exposure without breaking the common case.
-    /// </para>
+    /// Turn <see cref="MaxSourceFraction"/> from a warning into a refusal. Off by default: a
+    /// short render from a short source exceeds the limit routinely, so the default reports the
+    /// exposure rather than blocking it.
     /// </summary>
     public bool EnforceMaxSourceFraction { get; init; }
 
@@ -62,16 +52,12 @@ public sealed record ClipRequest
 
     public AnalysisSettings Analysis { get; init; } = new();
 
-    /// <summary>
-    /// What the finished render should sound like. Muted by default: this footage sits under
-    /// podcast narration, and a second audio bed fighting your voice is worse than silence.
-    /// </summary>
+    /// <summary>What the finished render should sound like. Muted by default.</summary>
     public AudioOptions Audio { get; init; } = new();
 
     /// <summary>
-    /// Whether the render carries no audio at all. A passthrough over <see cref="Audio"/> so
-    /// the extractor, the stitchers and the manifest keep asking the one question they care
-    /// about without knowing where the audio would have come from.
+    /// Whether the render carries no audio at all. A passthrough over <see cref="Audio"/> so the
+    /// extractor, stitchers and manifest need not know where the audio would have come from.
     /// </summary>
     public bool Mute => Audio.IsMuted;
 
@@ -80,8 +66,7 @@ public sealed record ClipRequest
 
     /// <summary>
     /// Re-analyse sources even when a cached result exists, and overwrite it. The cache key
-    /// already covers file identity and every analysis setting, so this is only needed to
-    /// recover from a stale entry or to measure scan cost.
+    /// already covers file identity and every analysis setting, so this is rarely needed.
     /// </summary>
     public bool IgnoreAnalysisCache { get; init; }
 

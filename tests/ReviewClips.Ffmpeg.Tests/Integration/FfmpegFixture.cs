@@ -5,11 +5,8 @@ using ReviewClips.Ffmpeg.Process;
 namespace ReviewClips.Ffmpeg.Tests.Integration;
 
 /// <summary>
-/// Shared FFmpeg-backed fixture.
-/// <para>
-/// All test media is synthesised with <c>lavfi</c> sources, so the suite needs no sample files
-/// and — importantly for a tool like this — no copyrighted material to run anywhere, including CI.
-/// </para>
+/// Shared FFmpeg-backed fixture. All test media is synthesised with <c>lavfi</c> sources, so the
+/// suite needs no sample files and no copyrighted material to run anywhere, including CI.
 /// </summary>
 public sealed class FfmpegFixture : IAsyncLifetime
 {
@@ -41,10 +38,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// <summary>A 720x480 clip with SAR 32:27, i.e. a 16:9 anamorphic DVD.</summary>
     public string AnamorphicClip { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// A 20s MKV carrying four named chapters, standing in for a disc rip whose container
-    /// marks its opening titles and end credits.
-    /// </summary>
+    /// <summary>A 20s MKV carrying four named chapters, as a disc rip marks titles and credits.</summary>
     public string ChapteredClip { get; private set; } = string.Empty;
 
     /// <summary>A 10s MKV whose chapters are named only by number, as most rips are.</summary>
@@ -57,9 +51,8 @@ public sealed class FfmpegFixture : IAsyncLifetime
     public string AudioTrack { get; private set; } = string.Empty;
 
     /// <summary>
-    /// A 6s MKV carrying three audio streams and no video, standing in for a track with
-    /// commentary or several language dubs. Exists so the stitchers' stream mapping can be shown
-    /// to take one stream rather than all of them.
+    /// A 6s MKV carrying three audio streams and no video, so the stitchers' stream mapping can
+    /// be shown to take one stream rather than all of them.
     /// </summary>
     public string MultiTrackAudio { get; private set; } = string.Empty;
 
@@ -136,11 +129,9 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// <summary>
     /// Whether a missing FFmpeg should fail the run rather than skip it.
     /// <para>
-    /// Skipping is the right default: a contributor whose FFmpeg lacks libzimg should not be shown
-    /// a red suite for a feature they are not touching. It is the wrong behaviour in CI, where
-    /// FFmpeg is installed as an explicit step — there, a skip means that step silently stopped
-    /// working and roughly a fifth of the suite is no longer running. Nothing else notices, because
-    /// a skipped test reports green.
+    /// Skipping suits a contributor whose FFmpeg lacks an optional component. It is wrong in CI,
+    /// where FFmpeg is installed as an explicit step: a skip there means that step stopped working
+    /// and much of the suite is no longer running, while still reporting green.
     /// </para>
     /// </summary>
     private static bool Required =>
@@ -149,12 +140,9 @@ public sealed class FfmpegFixture : IAsyncLifetime
     private HashSet<string> _filters = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Whether this FFmpeg was built with a given filter.
-    /// <para>
-    /// Tests for optional features gate on this. Asserting instead would mean a build without
-    /// libzimg reports "rcc is broken" when the truth is "this FFmpeg cannot tone-map", and the
-    /// failure would look identical to a genuine regression in the graph builder.
-    /// </para>
+    /// Whether this FFmpeg was built with a given filter. Tests for optional features gate on
+    /// this; asserting instead would make a build without libzimg indistinguishable from a
+    /// genuine regression in the graph builder.
     /// </summary>
     public bool HasFilter(string name) => _filters.Contains(name);
 
@@ -224,12 +212,9 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Counts video frames by decoding them, not by trusting the container's header.
-    /// <para>
-    /// Duration in seconds is too coarse to see the failure this exists for: a segment one or
-    /// two frames longer than it should be is a rounding error at the tolerance a duration
-    /// assertion can reasonably use, and a systematic bias that compounds across a render.
-    /// </para>
+    /// Counts video frames by decoding them, not by trusting the container's header. A segment
+    /// one or two frames over sits below the tolerance any duration assertion can use, yet the
+    /// bias is systematic and compounds across a render.
     /// </summary>
     public async Task<int> FrameCountOfAsync(string path)
     {
@@ -268,11 +253,8 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Decodes one frame to 8-bit greyscale and reports luma statistics.
-    /// <para>
-    /// Needed because the interesting failures in the look pipeline are tonal, not structural:
-    /// a graph can be perfectly valid and still produce a black rectangle.
-    /// </para>
+    /// Decodes one frame to 8-bit greyscale and reports luma statistics. Failures in the look
+    /// pipeline are tonal rather than structural: a valid graph can still produce a black frame.
     /// </summary>
     public async Task<(double Mean, int Median, int Max)> LumaStatsAsync(string path, double atSeconds = 1)
     {
@@ -375,11 +357,8 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// The duration of the first audio stream, as distinct from the container's.
-    /// <para>
-    /// Needed to tell a padded track from a truncated one: the container length only says how
-    /// long the file is, not whether audio is present throughout it.
-    /// </para>
+    /// The duration of the first audio stream, as distinct from the container's: tells a padded
+    /// track from a truncated one, which the container length cannot.
     /// </summary>
     public async Task<double> AudioDurationOfAsync(string path)
     {
@@ -403,11 +382,8 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Synthesises an audio-only file carrying several distinct audio streams.
-    /// <para>
-    /// Each track gets its own frequency so they are genuinely separate streams rather than one
-    /// stream mapped repeatedly. Matroska rather than WAV because WAV cannot hold more than one.
-    /// </para>
+    /// Synthesises an audio-only file carrying several distinct audio streams. Each track gets its
+    /// own frequency so they are genuinely separate; Matroska rather than WAV, which holds only one.
     /// </summary>
     private async Task<string> SynthesiseMultiTrackAudioAsync(string name, double seconds, int tracks)
     {
@@ -445,13 +421,9 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// How many audio streams a file carries.
-    /// <para>
-    /// A count rather than a bool on purpose. "Has audio" cannot tell one stream from five, which
-    /// is the difference between <c>-map N:a:0</c> and <c>-map N:a</c>: the latter takes every
-    /// stream in the input, and the result plays correctly while quietly carrying each commentary
-    /// and language track the source had.
-    /// </para>
+    /// How many audio streams a file carries. A count rather than a bool: "has audio" cannot tell
+    /// <c>-map N:a:0</c> from <c>-map N:a</c>, and the latter's output plays correctly while
+    /// quietly carrying every commentary and language track the source had.
     /// </summary>
     public async Task<int> AudioStreamCountAsync(string path)
     {

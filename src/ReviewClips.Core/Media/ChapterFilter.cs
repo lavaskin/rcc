@@ -12,11 +12,9 @@ public static class ChapterFilter
     /// <summary>
     /// Titles that indicate an opening sequence, an end sequence, or recycled footage.
     /// <para>
-    /// These are matched as case-insensitive substrings. They are deliberately phrases a
-    /// distributor uses for structural chapters rather than words a chapter of actual content
-    /// would be named after, so a false positive costs a few minutes of eligible footage at
-    /// worst. Titles are only ever consulted, never positions, so an unnamed disc rip is
-    /// unaffected.
+    /// Matched as case-insensitive substrings, and chosen to be phrases a distributor uses for
+    /// structural chapters rather than words a content chapter would be named after. Only
+    /// titles are consulted, never positions, so an unnamed disc rip is unaffected.
     /// </para>
     /// </summary>
     public static IReadOnlyList<string> IntroOutroPatterns { get; } =
@@ -64,18 +62,16 @@ public static class ChapterFilter
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(250));
 
-    /// <summary>
-    /// True when the title carries no information beyond the chapter's position.
-    /// </summary>
+    /// <summary>True when the title carries no information beyond the chapter's position.</summary>
     public static bool IsGenericTitle(string? title) =>
         string.IsNullOrWhiteSpace(title) || GenericTitle.IsMatch(title);
 
     /// <summary>
     /// Tests a chapter title against a pattern.
     /// <para>
-    /// A pattern containing <c>*</c> or <c>?</c> is a glob matched against the whole title.
-    /// Anything else is matched as a substring, because <c>--skip-chapter credits</c> meaning
-    /// "only a chapter named exactly 'credits'" would surprise every user who typed it.
+    /// A pattern containing <c>*</c> or <c>?</c> is a glob matched against the whole title;
+    /// anything else is matched as a substring, so <c>--skip-chapter credits</c> also catches
+    /// a chapter named "End Credits".
     /// </para>
     /// </summary>
     public static bool Matches(string? title, string pattern)

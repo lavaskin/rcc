@@ -10,28 +10,13 @@ public static class SplicePlanner
     public static TimeSpan MinimumSegment { get; } = TimeSpan.FromSeconds(0.75);
 
     /// <summary>
-    /// The shortest clip a plan may contain when cross-transitions are in use.
+    /// Shortest clip a plan may contain when cross-transitions are in use: twice the transition.
     /// <para>
-    /// <see cref="EffectiveTransition"/> caps the overlap at half the <em>shortest</em> clip, so a
-    /// single short clip anywhere in the plan reduces the overlap for every join in the render.
-    /// The tail clip is where that happens: <see cref="Plan"/> lands exactly on its target by
-    /// giving the last clip whatever is left over, and a leftover of <see cref="MinimumSegment"/>
-    /// against a 0.8s transition caps every overlap at 0.375s.
-    /// </para>
-    /// <para>
-    /// That is not merely an inaccuracy in one join. <see cref="PlanForOutput"/> compensates for
-    /// the overlaps by iterating, and the amount of material it settles on determines the size of
-    /// the leftover, which determines the cap, which determines the compensation. The loop feeds
-    /// itself and oscillates rather than converging, and it returns whichever member of the cycle
-    /// it stopped on: a 30s request at <c>--splice 3s --transition-duration 1s</c> rendered 36s.
-    /// </para>
-    /// <para>
-    /// Holding every clip to twice the transition removes the coupling at its source. The cap can
-    /// then never bind, the effective transition is the requested one whatever the jitter drew,
-    /// and the iteration is a plain contraction. Raising the floor instead of damping the loop is
-    /// what makes this exact rather than merely closer — measured across targets 10-600s and
-    /// twenty seeds, the error goes to zero for every splice and transition tried, including
-    /// those where twice the transition exceeds the splice itself.
+    /// <see cref="EffectiveTransition"/> caps the overlap at half the <em>shortest</em> clip, so
+    /// one short clip shrinks every join in the render. Since <see cref="PlanForOutput"/> solves
+    /// the overlap compensation by iterating, that cap feeds back into its own input and the loop
+    /// oscillates instead of converging. Holding every clip to twice the transition stops the cap
+    /// ever binding, which makes the iteration a contraction.
     /// </para>
     /// </summary>
     public static TimeSpan MinimumSegmentFor(TimeSpan transition) =>
@@ -44,9 +29,8 @@ public static class SplicePlanner
     /// compensating for the material that cross-transitions consume.
     /// <para>
     /// Each transition overlaps two clips, so N clips lose (N-1) transition durations from the
-    /// total. Ignoring that makes a request for 16 minutes with 193 clips produce under 15,
-    /// an 8% shortfall. The compensation is solved by fixed-point iteration because the clip
-    /// count depends on the amount of material, which depends on the clip count.
+    /// total. The compensation is solved by fixed-point iteration because the clip count depends
+    /// on the amount of material, which in turn depends on the clip count.
     /// </para>
     /// </summary>
     /// <param name="outputTarget">Desired runtime of the finished file.</param>
@@ -71,20 +55,18 @@ public static class SplicePlanner
             return Plan(outputTarget, splice, jitter, new Random(seed));
         }
 
-        // Every clip is held to twice the transition, which is what keeps EffectiveTransition
-        // from being clamped by a short tail clip and so keeps this loop a contraction rather
-        // than a cycle. See MinimumSegmentFor.
+        // Keeps EffectiveTransition's cap from binding, so the loop below contracts rather than
+        // cycles. See MinimumSegmentFor.
         var floor = MinimumSegmentFor(transition);
 
         var material = outputTarget;
         var best = Plan(material, splice, jitter, new Random(seed), floor);
 
-        // Converges in a handful of passes; the loop is bounded so a pathological
-        // configuration cannot spin.
+        // Converges in a few passes; bounded so a pathological configuration cannot spin.
         for (var iteration = 0; iteration < 12; iteration++)
         {
-            // A fresh RNG per pass keeps the jitter pattern deterministic for a given amount
-            // of material, so the iteration cannot oscillate on random noise.
+            // Fresh RNG per pass: jitter stays deterministic for a given amount of material,
+            // so the iteration cannot oscillate on random noise.
             var durations = Plan(material, splice, jitter, new Random(seed), floor);
             if (durations.Count == 0)
             {
@@ -115,12 +97,10 @@ public static class SplicePlanner
     /// Plans <paramref name="count"/> equal-length clips whose <em>finished render</em> lasts
     /// <paramref name="outputTarget"/>.
     /// <para>
-    /// This is the cue-driven case, where the clip count is dictated by the caller rather than
-    /// derived from a splice length. <see cref="PlanForOutput"/> cannot be reused for it: that
-    /// method solves the overlap compensation for the clip count <em>it</em> arrives at, and
-    /// spending the same material over a different number of clips loses a different number of
-    /// overlaps. Three cues consuming a budget solved for twenty-six clips overshoot the request
-    /// by the twenty-three transitions they never pay for.
+    /// The cue-driven case, where the caller dictates the clip count rather than deriving it from
+    /// a splice length. <see cref="PlanForOutput"/> cannot be reused: it solves the overlap
+    /// compensation for the clip count <em>it</em> arrives at, and spending that material over a
+    /// different count loses a different number of overlaps.
     /// </para>
     /// </summary>
     /// <param name="outputTarget">Desired runtime of the finished file.</param>
@@ -136,11 +116,9 @@ public static class SplicePlanner
             return [];
         }
 
-        // MinimumSegment, deliberately, and not the wider MinimumSegmentFor that PlanForOutput
-        // uses. That floor exists to stop a *random* tail clip capping the overlap; here every
-        // clip is the same length, so the cap is deterministic and the re-solve below already
-        // accounts for it exactly. Raising the floor to twice the transition would overshoot a
-        // request this method can currently satisfy on the nose.
+        // MinimumSegment, not the wider MinimumSegmentFor: that floor guards against a *random*
+        // tail clip capping the overlap. Here every clip is the same length, so the cap is
+        // deterministic and the re-solve below accounts for it exactly.
         var floor = MinimumSegment;
 
         if (count == 1 || transition <= TimeSpan.Zero)
@@ -168,16 +146,9 @@ public static class SplicePlanner
     /// <paramref name="count"/> clips of <paramref name="seconds"/>, never shorter than
     /// <paramref name="floor"/>.
     /// <para>
-    /// The floor is the one thing an equal division cannot honour by adjusting the arithmetic:
-    /// with enough cues over a short enough runtime the fair share is a fraction of a frame, and
-    /// no amount of transition compensation makes that a clip. Overshooting the request is the
-    /// better of the two failures available, because the alternative is dropping cues — and a
-    /// timestamp the user typed disappearing without trace is worse than a render that runs long.
-    /// The overshoot is reported, so it does not pass unremarked either.
-    /// </para>
-    /// <para>
-    /// Reached only in that degenerate case. Everywhere else the caller's arithmetic has already
-    /// produced a length above the floor and this passes it through untouched.
+    /// The floor binds only when the fair share falls below it — enough cues over a short enough
+    /// runtime. Overshooting the request is preferred to silently dropping cues, and the overshoot
+    /// is reported. Otherwise the caller's length is already above the floor and passes through.
     /// </para>
     /// </summary>
     private static IReadOnlyList<TimeSpan> Equal(double seconds, int count, TimeSpan floor)
@@ -189,10 +160,9 @@ public static class SplicePlanner
     /// <summary>
     /// Runtime of the finished render for these clip lengths, after cross-transition overlap.
     /// <para>
-    /// The one place this arithmetic lives. <see cref="Pipeline.RenderPlan.EffectiveDuration"/>
+    /// The single source of this arithmetic: <see cref="Pipeline.RenderPlan.EffectiveDuration"/>
     /// reports it, <see cref="PlanForOutput"/> iterates against it, and the pipeline checks the
-    /// finished plan against the request with it — three readings that have to agree, since the
-    /// whole point of the check is to catch the case where the plan and the request do not.
+    /// finished plan against the request with it. All three readings have to agree.
     /// </para>
     /// </summary>
     public static TimeSpan RenderedDuration(
@@ -232,9 +202,8 @@ public static class SplicePlanner
     /// <param name="jitter">Maximum deviation either side of <paramref name="splice"/>.</param>
     /// <param name="random">Seeded RNG, so a seed reproduces the same cadence.</param>
     /// <param name="minimumSegment">
-    /// Shortest clip the plan may contain. Defaults to <see cref="MinimumSegment"/>. Callers using
-    /// cross-transitions pass <see cref="MinimumSegmentFor"/> instead, which is what stops a short
-    /// tail clip capping the overlap for the whole render.
+    /// Shortest clip the plan may contain. Defaults to <see cref="MinimumSegment"/>; callers using
+    /// cross-transitions pass <see cref="MinimumSegmentFor"/>.
     /// </param>
     public static IReadOnlyList<TimeSpan> Plan(
         TimeSpan target,
@@ -252,9 +221,9 @@ public static class SplicePlanner
 
         var floor = minimumSegment ?? MinimumSegment;
 
-        // Jitter must not be able to produce a zero or negative length. A floor at or above the
-        // splice leaves no room to vary at all, which is the right answer rather than an edge
-        // case: the caller has asked for clips no shorter than the nominal length.
+        // Jitter must not produce a zero or negative length. A floor at or above the splice
+        // leaves no room to vary, which is correct: the caller asked for clips no shorter than
+        // the nominal length.
         var maxJitter = TimeSpan.FromSeconds(Math.Min(
             jitter.TotalSeconds,
             Math.Max(splice.TotalSeconds - floor.TotalSeconds, 0d)));

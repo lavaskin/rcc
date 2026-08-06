@@ -119,9 +119,9 @@ public sealed class FfprobeMediaProbe : IMediaProbe
     /// <summary>
     /// Reads the container duration and nothing else.
     /// <para>
-    /// <c>-show_format</c> only, deliberately: this exists to measure audio-only files, which
-    /// have no video stream for <see cref="ProbeAsync"/> to require, and the container duration
-    /// is the reliable field for them.
+    /// <c>-show_format</c> only, deliberately: this measures audio-only files, which have no
+    /// video stream for <see cref="ProbeAsync"/> to require, and the container duration is the
+    /// reliable field for them.
     /// </para>
     /// </summary>
     public async Task<TimeSpan> ProbeDurationAsync(string path, CancellationToken cancellationToken)
@@ -170,9 +170,9 @@ public sealed class FfprobeMediaProbe : IMediaProbe
     /// <summary>
     /// Turns raw ffprobe chapters into a sorted, non-degenerate list.
     /// <para>
-    /// Entries are dropped rather than repaired when unusable: a chapter list is an optional
-    /// hint, so a malformed one must not be able to fail a probe or to produce a range that
-    /// later gets subtracted from the eligible footage by mistake.
+    /// Unusable entries are dropped rather than repaired: a chapter list is an optional hint,
+    /// so a malformed one must neither fail the probe nor yield a range that is later
+    /// subtracted from the eligible footage.
     /// </para>
     /// </summary>
     internal static IReadOnlyList<Chapter> ResolveChapters(

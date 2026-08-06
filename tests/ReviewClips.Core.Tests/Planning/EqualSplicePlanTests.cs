@@ -9,8 +9,8 @@ namespace ReviewClips.Core.Tests.Planning;
 public class EqualSplicePlanTests
 {
     /// <summary>
-    /// The property that matters: what comes out of the stitcher is what was asked for. Stated
-    /// the same way the stitcher states it, so a change to one has to be a change to both.
+    /// Rendered runtime, stated the same way the stitcher states it, so a change to one has to
+    /// be a change to both.
     /// </summary>
     private static double Rendered(IReadOnlyList<TimeSpan> durations, double transition)
     {
@@ -70,9 +70,8 @@ public class EqualSplicePlanTests
     }
 
     /// <summary>
-    /// Hard cuts consume no material, so the clips simply divide the runtime. Worth pinning
-    /// separately: it is the one case where the answer is obvious, and a regression there would
-    /// be a regression in the common no-transition render.
+    /// Hard cuts consume no material, so the clips simply divide the runtime. Pinned separately
+    /// because a regression here is a regression in the common no-transition render.
     /// </summary>
     [Fact]
     public void PlanEqualForOutput_DividesPlainlyWhenThereIsNoTransition()
@@ -107,8 +106,7 @@ public class EqualSplicePlanTests
 
     /// <summary>
     /// The bug this method exists to prevent: spending a budget solved for one clip count over a
-    /// different clip count. Recreated here as the arithmetic it replaced, so the regression is
-    /// pinned rather than merely fixed.
+    /// different clip count. The arithmetic it replaced is recreated here to pin the regression.
     /// </summary>
     [Fact]
     public void SpendingASpliceDerivedBudgetOverFewerClipsWouldOvershoot()
@@ -133,8 +131,7 @@ public class EqualSplicePlanTests
 
     /// <summary>
     /// Enough cues over a short enough runtime and the equal share stops being a clip at all.
-    /// Nothing in the arithmetic prevents that, because the arithmetic is solving for the target
-    /// and the target is what has to give.
+    /// The arithmetic solves for the target, so the target is what has to give.
     /// </summary>
     [Theory]
     [InlineData(5, 15)]
@@ -152,8 +149,8 @@ public class EqualSplicePlanTests
     }
 
     /// <summary>
-    /// And the floor is not reached in the ordinary case, so it cannot be quietly inflating
-    /// renders that were landing exactly.
+    /// The floor is not reached in the ordinary case, so it cannot be quietly inflating renders
+    /// that were landing exactly.
     /// </summary>
     [Theory]
     [InlineData(300, 3)]

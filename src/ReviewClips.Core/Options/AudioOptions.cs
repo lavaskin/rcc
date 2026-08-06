@@ -2,7 +2,7 @@ namespace ReviewClips.Core.Options;
 
 public enum AudioMode
 {
-    /// <summary>Default. RCC is primarily used for a visual complement to a narrative.</summary>
+    /// <summary>Default.</summary>
     Mute,
 
     /// <summary>Keep each clip's own audio from the source.</summary>
@@ -37,21 +37,17 @@ public sealed record AudioOptions
     /// <summary>
     /// True when no audio stream should be written at all.
     /// <para>
-    /// <see cref="AudioMode.External"/> without a path counts as muted. That combination is a
-    /// contradiction rather than an instruction, and the alternative reading is worse than
-    /// useless: every consumer would be told audio is wanted, none would have a stream to
-    /// take it from, and the result is a file that is silently silent while declaring itself
-    /// otherwise. Collapsing it here means the three questions below cannot disagree whatever
-    /// the mode says.
+    /// <see cref="AudioMode.External"/> without a path counts as muted: consumers would
+    /// otherwise be told audio is wanted with no stream to take it from. Collapsing it here
+    /// keeps the three questions below in agreement whatever the mode says.
     /// </para>
     /// </summary>
     public bool IsMuted => Mode == AudioMode.Mute
         || (Mode == AudioMode.External && !HasExternalTrack);
 
     /// <summary>
-    /// True when each clip keeps its own audio. False for an external track: its single
-    /// continuous stream replaces the per-segment audio rather than mixing with it, so
-    /// extracting and encoding the source audio would be wasted work.
+    /// True when each clip keeps its own audio. False for an external track: it replaces
+    /// per-segment audio rather than mixing with it, so extracting that audio is wasted work.
     /// </summary>
     public bool UsesSegmentAudio => Mode == AudioMode.Source;
 

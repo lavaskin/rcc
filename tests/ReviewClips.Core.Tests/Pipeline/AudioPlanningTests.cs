@@ -46,10 +46,9 @@ public class AudioPlanningTests
 
         var plan = await harness.PlanAsync(request);
 
-        // 100s of 5s splices is 20-odd slots — a few more than 20, because the default
-        // dip-to-black overlaps each join and the planner adds material to compensate.
-        // Had the target been derived after cadence planning there would be about 4, and the
-        // render would come out a fifth of the length of the track.
+        // 100s of 5s splices is 20-odd slots — over 20 because the default dip-to-black overlaps
+        // each join and the planner adds material to compensate. Deriving the target after
+        // cadence planning would give about 4, a fifth of the track's length.
         plan.Segments.Count.ShouldBeGreaterThan(15);
         plan.EffectiveDuration.TotalSeconds.ShouldBe(100d, 1d);
     }
@@ -193,8 +192,7 @@ public class AudioPlanningTests
     public void AnExternalModeWithNoPathCountsAsMuted(string? path)
     {
         // Otherwise the three questions disagree: not muted, no segment audio, no external
-        // track. Every consumer would be told audio is wanted and none would have a stream to
-        // take it from, producing a file that is silently silent while claiming otherwise.
+        // track. Every consumer is told audio is wanted with no stream to take it from.
         var audio = new AudioOptions { Mode = AudioMode.External, ExternalPath = path };
 
         audio.IsMuted.ShouldBeTrue();

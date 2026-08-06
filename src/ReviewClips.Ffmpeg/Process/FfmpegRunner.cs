@@ -24,9 +24,9 @@ public sealed record FfmpegRunResult
 /// <summary>
 /// Runs FFmpeg and ffprobe.
 /// <para>
-/// Arguments are always passed via <see cref="ProcessStartInfo.ArgumentList"/>, never as a
-/// concatenated string. File paths from a media library routinely contain spaces, quotes and
-/// brackets, and shell interpolation would be both a correctness and an injection problem.
+/// Arguments always go through <see cref="ProcessStartInfo.ArgumentList"/>, never a concatenated
+/// string: media paths routinely contain spaces, quotes and brackets, so shell interpolation
+/// would be both a correctness and an injection problem.
 /// </para>
 /// </summary>
 public sealed class FfmpegRunner
@@ -190,9 +190,8 @@ public sealed class FfmpegRunner
     /// <summary>Runs FFmpeg and throws a descriptive exception on a non-zero exit.</summary>
     /// <param name="requireFrames">
     /// Also fail when FFmpeg reports writing no frames. A run that encodes nothing still exits 0
-    /// and still leaves a syntactically valid but stream-less file behind, so any caller whose
-    /// output is expected to contain pictures should set this; the alternative is that the empty
-    /// file is discovered by a later stage that cannot say what went wrong.
+    /// and leaves a syntactically valid but stream-less file behind, so callers whose output is
+    /// expected to contain pictures should set this rather than let a later stage trip over it.
     /// </param>
     public async Task RunFfmpegCheckedAsync(
         IReadOnlyList<string> arguments,
@@ -266,8 +265,8 @@ public sealed class FfmpegExecutionException : Exception
     }
 
     /// <param name="failure">
-    /// What went wrong, when the exit code does not say. Used for the runs FFmpeg calls
-    /// successful despite having written nothing.
+    /// What went wrong when the exit code does not say: the runs FFmpeg calls successful
+    /// despite having written nothing.
     /// </param>
     public FfmpegExecutionException(
         string executable,

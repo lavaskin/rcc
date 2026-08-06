@@ -6,11 +6,9 @@ namespace ReviewClips.Core.Planning;
 /// <summary>
 /// Fills a runtime by cycling through a limited pool of distinct clips.
 /// <para>
-/// This exists so a long render can be built from a small amount of source footage. Filling
-/// 16 minutes with unique 5s clips consumes over 17 minutes of the original; capping the pool at
-/// 50 clips consumes about 4 minutes of it instead. Beyond the aesthetic question, the total
-/// amount taken from a work is one of the factors that matters most, so being able to bound it
-/// is useful in its own right.
+/// Exists so a long render can be built from a small amount of source footage: without a cap,
+/// footage consumed tracks runtime roughly one for one. Beyond the aesthetic question, bounding
+/// the total taken from a work is useful in its own right.
 /// </para>
 /// </summary>
 public static class ClipSequencer
@@ -20,10 +18,9 @@ public static class ClipSequencer
     /// <paramref name="outputTarget"/>, compensating for transition overlap.
     /// <para>
     /// Solved by fixed-point iteration for the same reason as
-    /// <see cref="SplicePlanner.PlanForOutput"/>: the number of slots determines how much
-    /// material the transitions consume, and the amount of material determines the number of
-    /// slots. A fresh RNG per pass keeps the sequence deterministic so the loop cannot
-    /// oscillate on shuffle noise.
+    /// <see cref="SplicePlanner.PlanForOutput"/>: slot count and material each determine the
+    /// other. A fresh RNG per pass keeps the sequence deterministic so the loop cannot oscillate
+    /// on shuffle noise.
     /// </para>
     /// </summary>
     public static IReadOnlyList<Segment> FillForOutput(
@@ -39,9 +36,8 @@ public static class ClipSequencer
             return [];
         }
 
-        // As in SplicePlanner.PlanForOutput: the trimmed final slot is what would otherwise cap
-        // EffectiveTransition for the whole sequence and turn this loop into a cycle. See
-        // SplicePlanner.MinimumSegmentFor.
+        // The trimmed final slot would otherwise cap EffectiveTransition for the whole sequence
+        // and turn this loop into a cycle. See SplicePlanner.MinimumSegmentFor.
         var floor = SplicePlanner.MinimumSegmentFor(transition);
 
         var material = outputTarget;
@@ -79,10 +75,9 @@ public static class ClipSequencer
     /// <summary>
     /// Repeats <paramref name="distinct"/> until the durations sum to <paramref name="materialTotal"/>.
     /// <para>
-    /// The pool is reshuffled on every pass and a clip is never allowed to follow itself across
-    /// a cycle boundary, so the repetition is much less obvious than a plain loop. Repeated
-    /// entries keep identical start and duration, which lets the pipeline encode each one once
-    /// and reference it many times.
+    /// The pool is reshuffled on every pass and a clip never follows itself across a cycle
+    /// boundary. Repeated entries keep identical start and duration, which lets the pipeline
+    /// encode each one once and reference it many times.
     /// </para>
     /// </summary>
     /// <param name="minimumSegment">

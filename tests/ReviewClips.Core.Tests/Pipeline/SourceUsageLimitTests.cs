@@ -114,8 +114,8 @@ public class SourceUsageLimitTests
         capped.SourceUsage.Used.ShouldBeLessThan(unbounded.SourceUsage.Used);
         capped.SourceUsage.ExceedsLimit.ShouldBeFalse();
 
-        // And this is the property that makes the guardrail worth having: the render is just as
-        // long, but a measurement based on slot count would have reported both the same.
+        // Why the guardrail is worth having: the render is just as long, but a measurement based
+        // on slot count would have reported both the same.
         capped.Segments.Count.ShouldBeGreaterThan(capped.DistinctClipCount);
     }
 

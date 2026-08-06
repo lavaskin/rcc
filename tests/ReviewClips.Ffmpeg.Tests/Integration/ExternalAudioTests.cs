@@ -8,12 +8,9 @@ using ReviewClips.Ffmpeg.Stitching;
 namespace ReviewClips.Ffmpeg.Tests.Integration;
 
 /// <summary>
-/// Muxing an external track, run for real through both stitchers.
-/// <para>
-/// Both paths are covered deliberately. They build entirely different command lines — one is a
-/// stream copy, the other a filter graph — and the whole value of the feature is that the
-/// result is the same either way.
-/// </para>
+/// Muxing an external track, run for real through both stitchers. They build entirely different
+/// command lines — one a stream copy, the other a filter graph — and the result has to be the
+/// same either way.
 /// </summary>
 [Collection(FfmpegTestGroup.Name)]
 public class ExternalAudioTests
@@ -147,8 +144,7 @@ public class ExternalAudioTests
 
         var arguments = string.Join(' ', Concat().DescribeArguments(request));
 
-        // The fast path is the reason this stitcher exists. Muxing audio must not cost a video
-        // re-encode, or --transition none stops being free.
+        // Muxing audio must not cost a video re-encode, or --transition none stops being free.
         arguments.ShouldContain("-c:v copy");
         arguments.ShouldNotContain("libx264");
         arguments.ShouldContain("-map 0:v");
@@ -183,9 +179,8 @@ public class ExternalAudioTests
 
         await Concat().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
 
-        // 6s of video against 4s of remaining audio. The video is what was asked for, so it
-        // survives whole and apad fills the 2s shortfall with silence. Truncating to the audio
-        // instead would be silent data loss.
+        // 6s of video against 4s of remaining audio: apad fills the 2s shortfall with silence
+        // rather than the render being truncated to the track.
         (await _fixture.DurationOfAsync(output)).ShouldBe(6d, 0.3d);
     }
 
@@ -207,9 +202,8 @@ public class ExternalAudioTests
 
     // --- Length reconciliation ---------------------------------------------
     //
-    // The render's length is what the user asked for. An external track is a decoration on it,
-    // so a track that runs out early must not shorten it: apad fills the gap with silence. Both
-    // stitchers are covered, because they reach that outcome by completely different routes.
+    // A track that runs out early must not shorten the render: apad fills the gap with silence.
+    // Both stitchers are covered because they reach that outcome by different routes.
 
     [Theory]
     [InlineData(true)]
@@ -222,8 +216,7 @@ public class ExternalAudioTests
         var segments = await SegmentsAsync($"short_audio_{label}");
         var output = _fixture.PathFor($"short_audio_{label}.mp4");
 
-        // 6s of video against 6s of track offset by 4s, so only 2s of audio remains. The render
-        // still has to be 6s: the length asked for is not negotiable by the soundtrack.
+        // 6s of video against a 6s track offset by 4s, so only 2s of audio remains.
         var audio = AudioOptions.FromFile(_fixture.AudioTrack) with
         {
             Offset = TimeSpan.FromSeconds(4),
@@ -241,7 +234,6 @@ public class ExternalAudioTests
         }
 
         // The concat path copies all 6s. The graph path overlaps three 0.4s crossfades, so 4.8s.
-        // Either way the figure is set by the video, never by the short track.
         var expected = useConcat ? 6d : 4.8d;
         (await _fixture.DurationOfAsync(output)).ShouldBe(expected, 0.4d);
 
@@ -300,8 +292,7 @@ public class ExternalAudioTests
         (await _fixture.AudioStreamCountAsync(output)).ShouldBe(1);
 
         // Four 1.5s clips joined by three 0.4s crossfades: 6 - 1.2 = 4.8s of video. apad makes
-        // the audio effectively endless, so -shortest always lands the file on the video and the
-        // 6s track is trimmed to fit rather than the other way round.
+        // the audio effectively endless, so -shortest lands the file on the video.
         (await _fixture.DurationOfAsync(output)).ShouldBe(4.8d, 0.4d);
     }
 
@@ -374,8 +365,8 @@ public class ExternalAudioTests
 
         var arguments = string.Join(' ', Graph().DescribeArguments(request));
 
-        // A bed still at full volume over a picture fading to black is the most audible way for
-        // a render to sound unfinished, and the fades have to line up with the video's.
+        // The audio fades must line up with the video's, or the bed plays on at full volume
+        // over a picture already faded to black.
         arguments.ShouldContain("afade=t=in:st=0:d=0.5");
         arguments.ShouldContain("fade=t=in:st=0:d=0.5");
 

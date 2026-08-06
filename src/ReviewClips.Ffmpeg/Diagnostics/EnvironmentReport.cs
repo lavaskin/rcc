@@ -21,9 +21,7 @@ public sealed record ToolStatus
     public string? Error { get; init; }
 }
 
-/// <summary>
-/// The result of a probe-encode for one encoder, plus the flag that selects it.
-/// </summary>
+/// <summary>The result of a probe-encode for one encoder, plus the flag that selects it.</summary>
 public sealed record EncoderStatus
 {
     public required string Name { get; init; }
@@ -34,9 +32,8 @@ public sealed record EncoderStatus
     /// <summary>
     /// True when the probe was abandoned rather than answered.
     /// <para>
-    /// Kept separate from <see cref="Usable"/> because the two point at different remedies. A
-    /// failed probe means this FFmpeg build cannot do it, which calls for a different build. A
-    /// timed-out probe means the driver stopped responding, which usually calls for a reboot.
+    /// Separate from <see cref="Usable"/> because the remedies differ: a failed probe means this
+    /// FFmpeg build cannot do it, a timed-out probe means the driver stopped responding.
     /// </para>
     /// </summary>
     public bool TimedOut { get; init; }
@@ -63,11 +60,10 @@ public sealed record MissingFeature
 /// <summary>
 /// Which of the filters the render graphs depend on are compiled into this FFmpeg.
 /// <para>
-/// Split into two tiers, mirroring <see cref="EncoderStatus.Required"/>. A build without
-/// <c>zscale</c> — which needs libzimg and is the component most often left out, notably on
-/// Alpine and minimal container images — cannot tone-map HDR, but every SDR render still works
-/// perfectly. Treating that as a broken environment would send people chasing a rebuild they do
-/// not need, so only the filters a default render cannot avoid count against usability.
+/// Two tiers, mirroring <see cref="EncoderStatus.Required"/>. Only filters a default render
+/// cannot avoid count against usability: <c>zscale</c> needs libzimg and is the component most
+/// often left out, notably on Alpine and minimal container images, yet its absence costs only
+/// HDR tone-mapping and leaves every SDR render working.
 /// </para>
 /// </summary>
 public sealed record FilterStatus
@@ -90,11 +86,10 @@ public sealed record FilterStatus
 /// <summary>
 /// Whether <c>--attribution</c> will actually work.
 /// <para>
-/// Two separate things have to be true, and checking only the first is how you get a confusing
-/// mid-render failure. <c>drawtext</c> has to be compiled in, and — because rcc deliberately
-/// does not pin a <c>fontfile</c>, so the caption matches whatever the system uses — fontconfig
-/// has to be able to resolve a default family. A container can easily have libfreetype and no
-/// installed font, at which point the filter exists and still fails.
+/// Two conditions, not one: <c>drawtext</c> must be compiled in, and fontconfig must resolve a
+/// default family, because rcc deliberately does not pin a <c>fontfile</c> and so takes whatever
+/// the system uses. A container can have libfreetype and no installed font, at which point the
+/// filter exists and still fails.
 /// </para>
 /// </summary>
 public sealed record TextRenderStatus
@@ -140,9 +135,7 @@ public sealed record EnvironmentReport
     /// default render needs compiled in, and at least the software fallback encoder working.
     /// <para>
     /// Deliberately indifferent to <see cref="FilterStatus.MissingOptional"/> and to
-    /// <see cref="Text"/>. Those gate individual opt-in flags; they do not stop the tool
-    /// working, and reporting them as failure would make the common minimal-FFmpeg install
-    /// look broken when it is merely limited.
+    /// <see cref="Text"/>: those gate individual opt-in flags and do not stop the tool working.
     /// </para>
     /// </summary>
     public bool IsUsable =>
@@ -156,9 +149,7 @@ public sealed record EnvironmentReport
         IsUsable && (Filters.MissingOptional.Count > 0 || !Text.Usable);
 }
 
-/// <summary>
-/// Builds an <see cref="EnvironmentReport"/> by interrogating the local FFmpeg install.
-/// </summary>
+/// <summary>Builds an <see cref="EnvironmentReport"/> by interrogating the local FFmpeg install.</summary>
 public sealed class EnvironmentInspector
 {
     /// <summary>
@@ -177,8 +168,8 @@ public sealed class EnvironmentInspector
     ];
 
     /// <summary>
-    /// Filters a render cannot avoid, whatever the flags. Absence is fatal and is reported as
-    /// such, because the alternative is a confusing failure partway through a long render.
+    /// Filters a render cannot avoid, whatever the flags. Absence is fatal, and reported up
+    /// front rather than as a failure partway through a long render.
     /// </summary>
     private static readonly string[] RequiredFilters =
     [
@@ -194,11 +185,11 @@ public sealed class EnvironmentInspector
 
     /// <summary>
     /// Filters that gate one opt-in feature each. Absence limits the tool rather than breaking
-    /// it, so each is reported with the flag it disables rather than as an error.
+    /// it, so each is reported with the flag it disables, not as an error.
     /// </summary>
     private static readonly (string Filter, string Feature)[] OptionalFilters =
     [
-        // libzimg. The single most commonly absent component, and only HDR sources need it.
+        // libzimg. See FilterStatus.
         ("zscale", "HDR tone mapping (--tonemap)"),
         ("tonemap", "HDR tone mapping (--tonemap)"),
         ("setparams", "HDR tone mapping (--tonemap)"),
@@ -221,14 +212,12 @@ public sealed class EnvironmentInspector
         RequiredFilters.Concat(OptionalFilters.Select(f => f.Filter));
 
     /// <summary>
-    /// The optional filters and the feature text each is reported with, whether or not it is
-    /// present on this machine.
+    /// The optional filters and the feature text each is reported with, present or not.
     /// <para>
-    /// The feature text names command-line flags, and a diagnostic whose purpose is to say which
-    /// flag stopped working is actively misleading if the flag it names does not exist. These are
-    /// plain strings living in a different assembly from the option definitions, so nothing about
-    /// them stays correct on its own; exposing the list lets the CLI's tests check every flag
-    /// mentioned here against the options that actually exist.
+    /// The feature text names command-line flags, but they are plain strings in a different
+    /// assembly from the option definitions, so nothing keeps them correct on their own.
+    /// Exposing the list lets the CLI's tests check every flag named here against the options
+    /// that actually exist.
     /// </para>
     /// </summary>
     public static IReadOnlyList<MissingFeature> OptionalFeatures =>
@@ -237,15 +226,10 @@ public sealed class EnvironmentInspector
     /// <summary>
     /// How long any single probe may take before it is abandoned.
     /// <para>
-    /// <c>doctor</c> is what you run to diagnose a broken environment, so it must stay responsive
-    /// on one. An unresponsive GPU driver does not fail a probe, it stops answering: the process
-    /// starts and never returns. Without a bound the command produces no output at all and cannot
-    /// be exited except by Ctrl+C. Generous next to a healthy probe, which encodes two frames and
-    /// takes well under a second.
-    /// </para>
-    /// <para>
-    /// Applied per probe rather than to the run as a whole, so one unresponsive encoder costs its
-    /// own row rather than the rest of the report.
+    /// An unresponsive GPU driver does not fail a probe, it stops answering, and <c>doctor</c> is
+    /// what you run on a broken environment. Generous next to a healthy probe, which encodes two
+    /// frames in well under a second. Applied per probe rather than to the run as a whole, so one
+    /// unresponsive encoder costs its own row rather than the rest of the report.
     /// </para>
     /// </summary>
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(15);
@@ -269,7 +253,7 @@ public sealed class EnvironmentInspector
         var ffprobe = await InspectToolAsync("ffprobe", toolset.FfprobePath, cancellationToken);
 
         // Without ffmpeg there is nothing to probe, and every probe would report a misleading
-        // "unusable" rather than the real cause.
+        // "unusable" instead of the real cause.
         var encoders = ffmpeg.Available
             ? await ProbeEncodersAsync(cancellationToken)
             : KnownEncoders
@@ -298,8 +282,7 @@ public sealed class EnvironmentInspector
                 ],
             };
 
-        // Only worth probing when drawtext exists; otherwise the failure is already explained
-        // by the filter row and a second red line would just restate it.
+        // Only worth probing when drawtext exists; otherwise the filter row already explains it.
         var text = filters.Present.Contains("drawtext")
             ? await InspectTextRenderingAsync(cancellationToken)
             : new TextRenderStatus
@@ -323,12 +306,10 @@ public sealed class EnvironmentInspector
     /// <summary>
     /// Deletes the cache entries, returning what was removed.
     /// <para>
-    /// Deliberately not <c>Directory.Delete(recursive: true)</c>. The directory comes from
-    /// <c>Cache:Directory</c> and is used verbatim, so a user who points it at somewhere they
-    /// also keep other things would have all of it removed by a recursive delete — and
-    /// <c>--clear-cache</c> asks for no confirmation. Removing only the files this cache is
-    /// responsible for makes the blast radius match the promise, and the directory itself is
-    /// left in place because a subsequent run needs it anyway.
+    /// Deliberately not <c>Directory.Delete(recursive: true)</c>: the directory comes from
+    /// <c>Cache:Directory</c> and is used verbatim, and <c>--clear-cache</c> asks for no
+    /// confirmation, so removing only the files this cache owns keeps the blast radius matching
+    /// the promise. The directory itself is left in place because the next run needs it.
     /// </para>
     /// </summary>
     public CacheStatus ClearCache()
@@ -355,8 +336,8 @@ public sealed class EnvironmentInspector
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // A locked or unreadable entry is not a reason to abandon the rest, and the
-                // returned totals report what was actually removed rather than what was found.
+                // A locked entry is no reason to abandon the rest; the returned totals report
+                // what was actually removed rather than what was found.
             }
         }
 
@@ -394,11 +375,10 @@ public sealed class EnvironmentInspector
     /// <summary>
     /// The files this cache owns, and the only ones <see cref="ClearCache"/> will remove.
     /// <para>
-    /// Shared by reporting and clearing so the two cannot describe different sets — "cleared 20
-    /// entries" has to mean the 20 that were just reported. <see cref="JsonAnalysisCache"/>
-    /// writes <c>&lt;name&gt;.&lt;hash&gt;.json</c> flat in this directory, plus a
-    /// <c>.tmp</c> staging file it normally moves away; anything else in there belongs to
-    /// somebody else and is left alone.
+    /// Shared by reporting and clearing so the two cannot describe different sets.
+    /// <see cref="JsonAnalysisCache"/> writes <c>&lt;name&gt;.&lt;hash&gt;.json</c> flat in this
+    /// directory, plus a <c>.tmp</c> staging file it normally moves away; anything else in there
+    /// belongs to somebody else and is left alone.
     /// </para>
     /// </summary>
     private static List<string> EnumerateEntries(string directory)
@@ -446,10 +426,9 @@ public sealed class EnvironmentInspector
     /// <summary>
     /// Extracts filter names from <c>ffmpeg -filters</c>.
     /// <para>
-    /// Each filter occupies a line of the form <c>" TSC name  V-&gt;V  description"</c>. The
-    /// arrow in the third field is what distinguishes a filter row from the legend FFmpeg
-    /// prints above the list, whose rows (<c>"T.. = Timeline support"</c>) are otherwise
-    /// shaped identically. Matching on the arrow rather than on a substring search for the
+    /// Rows read <c>" TSC name  V-&gt;V  description"</c>. The arrow in the third field is what
+    /// distinguishes a filter row from the identically shaped legend FFmpeg prints above the list
+    /// (<c>"T.. = Timeline support"</c>). Matching on it rather than substring-searching for the
     /// name also avoids <c>unsharp</c> being satisfied by <c>unsharp_opencl</c>.
     /// </para>
     /// </summary>
@@ -484,14 +463,11 @@ public sealed class EnvironmentInspector
 
         try
         {
-            // A single launch of this one binary, which is both the launchability check and the
-            // source of the version string. Routing through FfmpegToolset.EnsureAvailableAsync
-            // instead would verify whichever pair that toolset was configured with rather than
-            // `path`, and it runs -version once per property, so the row cost three launches of
-            // the same executable to produce.
-            // Bounded like the encoder probes. A binary on an unresponsive network mount hangs
-            // here, and this runs before anything is printed, so an unbounded wait would leave
-            // the command with nothing on screen at all.
+            // One launch of this binary serves as both the launchability check and the version
+            // source. FfmpegToolset.EnsureAvailableAsync would instead verify whichever pair that
+            // toolset was configured with rather than `path`, and runs -version once per property.
+            // Bounded like the encoder probes: a binary on an unresponsive network mount hangs
+            // here, before anything has been printed.
             result = await WithTimeoutAsync(
                 token => _runner.RunAsync(path, ["-version"], null, null, token),
                 onTimeout: (FfmpegRunResult?)null,
@@ -521,9 +497,8 @@ public sealed class EnvironmentInspector
             };
         }
 
-        // Launching is not the same as working. A build missing a shared library, or one for the
-        // wrong architecture, starts and then exits non-zero; reporting that as available would
-        // put a green row above a render that cannot get off the ground.
+        // Launching is not the same as working: a build missing a shared library, or one for the
+        // wrong architecture, starts and then exits non-zero.
         if (!result.Success)
         {
             return new ToolStatus
@@ -545,8 +520,8 @@ public sealed class EnvironmentInspector
     }
 
     /// <summary>
-    /// The last non-empty line of stderr, which is where the actual cause sits. Kept to one
-    /// line because the doctor table renders <see cref="ToolStatus.Error"/> inline.
+    /// The last non-empty line of stderr, where the cause sits. Kept to one line because the
+    /// doctor table renders <see cref="ToolStatus.Error"/> inline.
     /// </summary>
     private static string LastLine(string standardError) =>
         standardError
@@ -583,8 +558,8 @@ public sealed class EnvironmentInspector
     /// <summary>
     /// Runs one probe under <see cref="ProbeTimeout"/>, substituting a result if it overruns.
     /// <para>
-    /// The caller's own cancellation is deliberately not caught: a Ctrl+C has to propagate as a
-    /// cancellation, not be reported as a timed-out probe. Only the linked timeout is absorbed.
+    /// Only the linked timeout is absorbed; the caller's own cancellation must propagate as a
+    /// cancellation rather than be reported as a timed-out probe.
     /// </para>
     /// </summary>
     private static async Task<TResult> WithTimeoutAsync<T, TResult>(
@@ -608,8 +583,8 @@ public sealed class EnvironmentInspector
 
     private async Task<FilterStatus> InspectFiltersAsync(CancellationToken cancellationToken)
     {
-        // On a timeout, treat every filter as absent: the required ones are then reported missing
-        // and IsUsable goes false, which is the honest reading of "FFmpeg would not tell us".
+        // On a timeout, treat every filter as absent: the required ones are reported missing and
+        // IsUsable goes false, the honest reading of "FFmpeg would not tell us".
         var output = await WithTimeoutAsync(
             token => _runner.RunFfmpegAsync(["-hide_banner", "-filters"], token),
             onTimeout: string.Empty,
@@ -633,14 +608,9 @@ public sealed class EnvironmentInspector
     }
 
     /// <summary>
-    /// Draws one frame of text over a synthetic source.
-    /// <para>
-    /// The same shape of check as the encoder probe, and for the same reason: the question is
-    /// not whether the filter was compiled in but whether it works here. <c>drawtext</c> with no
-    /// <c>fontfile</c> asks fontconfig for a default family, which fails on an image that has
-    /// libfreetype but no fonts installed — so this is the only way to find out before a render
-    /// does it for you.
-    /// </para>
+    /// Draws one frame of text over a synthetic source. Same shape as the encoder probe and for
+    /// the same reason: a compiled-in <c>drawtext</c> can still fail here. See
+    /// <see cref="TextRenderStatus"/>.
     /// </summary>
     private async Task<TextRenderStatus> InspectTextRenderingAsync(CancellationToken cancellationToken)
     {
@@ -657,11 +627,9 @@ public sealed class EnvironmentInspector
 
         try
         {
-            // Bounded like the encoder probes, and for a reason of its own: with no fontfile
-            // pinned this goes through fontconfig, which builds its cache on first use. On an
-            // image where that cache is cold and the font path is large it is the slowest thing
-            // doctor does, and an unbounded wait here would hang the command it exists to
-            // diagnose with.
+            // Bounded like the encoder probes, with a reason of its own: with no fontfile pinned
+            // this goes through fontconfig, which builds its cache on first use and is then the
+            // slowest thing doctor does.
             var result = await WithTimeoutAsync(
                 token => _runner.RunFfmpegAsync(arguments, token),
                 onTimeout: (FfmpegRunResult?)null,

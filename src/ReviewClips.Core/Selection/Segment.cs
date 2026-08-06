@@ -16,12 +16,9 @@ public sealed record Segment
     /// Playback rate this clip is retimed by, which is how much source it takes to fill
     /// <see cref="Duration"/> of output. 1 for the ordinary case.
     /// <para>
-    /// A clip is two different lengths at once under <c>--speed</c>, and confusing them is a
-    /// correctness problem rather than a presentational one: at <c>--speed 2</c> a five second
-    /// clip occupies five seconds of the render and ten seconds of the film. Selection has to
-    /// reserve the latter — it is what determines whether the clip fits inside its source, stays
-    /// out of an excluded range, and avoids overlapping its neighbours — while the render's
-    /// runtime is built from the former.
+    /// A clip has two lengths at once: at <c>--speed 2</c> a five second clip occupies five
+    /// seconds of the render and ten seconds of the film. Selection reserves the latter, via
+    /// <see cref="ReadDuration"/>; the render's runtime is built from the former.
     /// </para>
     /// </summary>
     public double SpeedFactor { get; init; } = 1d;
@@ -38,9 +35,8 @@ public sealed record Segment
         : Duration;
 
     /// <summary>
-    /// Where the clip stops reading from its source. The source-side end, not the output-side
-    /// one, because every question asked of it — does this fit, does it collide, does it stray
-    /// into a range that was excluded — is a question about the source.
+    /// Where the clip stops reading from its source. Source-side, not output-side: fit,
+    /// collision and exclusion checks are all questions about the source.
     /// </summary>
     public TimeSpan End => Start + ReadDuration;
 

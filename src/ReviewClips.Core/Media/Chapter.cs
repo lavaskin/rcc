@@ -5,9 +5,9 @@ namespace ReviewClips.Core.Media;
 /// <summary>
 /// A chapter marker read from the container.
 /// <para>
-/// Chapters are the only structural information a source can state about itself. Where they are
-/// present and named, they locate the opening titles and the end credits exactly, which is
-/// strictly better than inferring those positions from a percentage of the runtime.
+/// The only structural information a source states about itself: where present and named,
+/// chapters locate the opening titles and end credits exactly rather than by inferring them
+/// from a percentage of the runtime.
 /// </para>
 /// </summary>
 public sealed record Chapter
@@ -28,8 +28,8 @@ public sealed record Chapter
 
     /// <summary>
     /// True when the title carries no information beyond the position, as with the
-    /// <c>Chapter 07</c> names that ripping tools generate for unmarked discs. Such a title
-    /// cannot be matched against, so it is worth reporting separately from having no title.
+    /// <c>Chapter 07</c> names ripping tools generate. Reported separately from having no
+    /// title at all. See <see cref="ChapterFilter.IsGenericTitle"/>.
     /// </summary>
     public bool HasGenericTitle => ChapterFilter.IsGenericTitle(Title);
 

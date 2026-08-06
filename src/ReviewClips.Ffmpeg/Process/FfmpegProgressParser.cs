@@ -26,11 +26,9 @@ public sealed class FfmpegProgressParser
     /// <summary>
     /// Frames written to the output so far, as last reported by FFmpeg, or null if it never said.
     /// <para>
-    /// Worth capturing because FFmpeg exits 0 after writing an empty file. A filter graph that
-    /// yields nothing — a mistimed trim, an overlay whose second input runs out immediately —
-    /// produces "Output file is empty, nothing was encoded" on stderr, a valid 262-byte MP4 with
-    /// no streams, and a successful exit code. Without this the failure surfaces several stages
-    /// later as an unrelated complaint from whatever tried to read the file.
+    /// Worth capturing because FFmpeg exits 0 after writing an empty file: a filter graph that
+    /// yields nothing produces "Output file is empty, nothing was encoded" on stderr, a valid
+    /// but stream-less MP4, and a successful exit code.
     /// </para>
     /// </summary>
     public long? FramesWritten { get; private set; }

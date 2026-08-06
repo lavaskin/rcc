@@ -61,14 +61,12 @@ public sealed record SourceUsageReport
         Sources.Count == 0 ? null : Sources.MaxBy(s => s.Fraction);
 
     /// <summary>
-    /// The largest share taken from any single source. This is what the limit is tested
-    /// against.
+    /// The largest share taken from any single source. This is what the limit is tested against.
     /// <para>
-    /// Measuring the aggregate instead would let the check be defeated by supplying footage the
-    /// render never touches: eight tenths of one film is the exposure that matters, and pooling
-    /// it with nine unused sources reports eight per cent. Per-source is also simply the honest
-    /// reading of the question — the guardrail is about how much of <em>a work</em> was used,
-    /// and a pile of separate works has no combined runtime that means anything.
+    /// Aggregating instead would let the check be defeated by supplying footage the render never
+    /// touches: eight tenths of one film pooled with nine unused sources reports eight per cent.
+    /// The guardrail is about how much of <em>a work</em> was used, and a pile of separate works
+    /// has no combined runtime that means anything.
     /// </para>
     /// </summary>
     public double PeakFraction => Peak?.Fraction ?? 0d;
@@ -83,10 +81,8 @@ public sealed record SourceUsageReport
 /// worth mentioning.
 /// <para>
 /// The measurement is the <em>union</em> of the referenced source ranges, taken per source.
-/// Multiplying clip count by clip length would be easier and wrong: with <c>--max-clips</c>
-/// repeating a pool of 50 clips across 210 slots it overstates consumption more than fourfold,
-/// and would refuse renders that in fact touch four minutes of a three-hour film. Overlapping
-/// clips are likewise counted once.
+/// Clip count times clip length would be easier and wrong: it overstates consumption wherever
+/// <c>--max-clips</c> repeats a pool. Overlapping clips are likewise counted once.
 /// </para>
 /// <para>
 /// This is an aesthetic and record-keeping aid, not legal advice. Proportion used is one of
@@ -122,9 +118,8 @@ public static class SourceUsageGuard
                 Path = path,
                 Used = used.GetValueOrDefault(path),
 
-                // A source reporting no duration cannot be measured against; treating it as
-                // zero rather than dropping it keeps it visible in the manifest with a
-                // fraction of 0 instead of silently vanishing.
+                // A source reporting no duration cannot be measured against; zero rather than
+                // dropping it keeps it visible in the manifest with a fraction of 0.
                 Available = duration > TimeSpan.Zero ? duration : TimeSpan.Zero,
             });
         }
@@ -176,12 +171,8 @@ public static class SourceUsageGuard
     }
 
     /// <summary>
-    /// Union of the referenced ranges within each source, keyed by path.
-    /// <para>
-    /// Per source rather than summed, because the union of ranges in two different files is not
-    /// a meaningful quantity: the guardrail needs to know how much of <em>each</em> work was
-    /// taken.
-    /// </para>
+    /// Union of the referenced ranges within each source, keyed by path. Per source rather than
+    /// summed: see <see cref="SourceUsageReport.PeakFraction"/>.
     /// </summary>
     private static Dictionary<string, TimeSpan> UsedBySource(IEnumerable<Segment> segments)
     {

@@ -11,12 +11,8 @@ using Spectre.Console;
 namespace ReviewClips.Cli.Commands;
 
 /// <summary>
-/// Renders several different variants in one run.
-/// <para>
-/// This is the workflow-shaped command: one podcast episode usually needs a handful of
-/// interchangeable background tracks. Because the analysis cache is warm after the first
-/// variant, the rest are much faster than running <c>generate</c> repeatedly.
-/// </para>
+/// Renders several variants in one run. The analysis cache is warm after the first variant, so
+/// the rest are much faster than running <c>generate</c> repeatedly.
 /// </summary>
 internal sealed class BatchCommand
 {
