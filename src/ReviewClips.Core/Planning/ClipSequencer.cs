@@ -39,12 +39,17 @@ public static class ClipSequencer
             return [];
         }
 
+        // As in SplicePlanner.PlanForOutput: the trimmed final slot is what would otherwise cap
+        // EffectiveTransition for the whole sequence and turn this loop into a cycle. See
+        // SplicePlanner.MinimumSegmentFor.
+        var floor = SplicePlanner.MinimumSegmentFor(transition);
+
         var material = outputTarget;
-        var best = Fill(pool, material, new Random(seed));
+        var best = Fill(pool, material, new Random(seed), floor);
 
         for (var iteration = 0; iteration < 12; iteration++)
         {
-            var sequence = Fill(pool, material, new Random(seed));
+            var sequence = Fill(pool, material, new Random(seed), floor);
             if (sequence.Count == 0)
             {
                 return best;
@@ -85,10 +90,15 @@ public static class ClipSequencer
     /// and reference it many times.
     /// </para>
     /// </summary>
+    /// <param name="minimumSegment">
+    /// Shortest slot the sequence may contain. Defaults to <see cref="SplicePlanner.MinimumSegment"/>;
+    /// callers using cross-transitions pass <see cref="SplicePlanner.MinimumSegmentFor"/>.
+    /// </param>
     public static IReadOnlyList<Segment> Fill(
         IReadOnlyList<Segment> distinct,
         TimeSpan materialTotal,
-        Random random)
+        Random random,
+        TimeSpan? minimumSegment = null)
     {
         ArgumentNullException.ThrowIfNull(distinct);
         ArgumentNullException.ThrowIfNull(random);
@@ -97,6 +107,8 @@ public static class ClipSequencer
         {
             return [];
         }
+
+        var floor = minimumSegment ?? SplicePlanner.MinimumSegment;
 
         var result = new List<Segment>();
         var running = TimeSpan.Zero;
@@ -125,7 +137,7 @@ public static class ClipSequencer
                 if (clip.Duration >= remaining)
                 {
                     // Final slot: trim to land exactly on the target.
-                    if (remaining < SplicePlanner.MinimumSegment && result.Count > 0)
+                    if (remaining < floor && result.Count > 0)
                     {
                         // Too short to stand alone; lengthen the previous entry instead.
                         result[^1] = result[^1] with { Duration = result[^1].Duration + remaining };

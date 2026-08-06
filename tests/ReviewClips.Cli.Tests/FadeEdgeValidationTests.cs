@@ -1,3 +1,5 @@
+using ReviewClips.Core.Planning;
+
 namespace ReviewClips.Cli.Tests;
 
 /// <summary>
@@ -100,13 +102,46 @@ public class FadeEdgeValidationTests
     {
         using var harness = new RequestBuilderHarness();
 
-        // SplicePlanner clamps jitter so a clip can never fall under 0.75s; the bound has to
+        // SplicePlanner clamps jitter so a clip can never fall under the floor; the bound has to
         // agree, rather than computing 2 - 10 = -8s and rejecting every value including zero.
+        // The floor here is twice the default 0.4s transition, so 0.8s.
         var message = harness.Rejection(
             "-d", "60s", "--splice", "2s", "--splice-jitter", "10s", "--fade-edges", "1s");
 
         // The floor, and half of it, both stated as positive figures.
-        message.ShouldContain("0.75s");
-        message.ShouldContain("0.38s");
+        message.ShouldContain("0.8s");
+        message.ShouldContain("0.4s");
+    }
+
+    /// <summary>
+    /// The floor tracks the transition, because <see cref="SplicePlanner"/> holds every clip to
+    /// twice it. A bound computed against the bare 0.75s minimum would admit fade values the
+    /// planner's own cadence can accommodate perfectly well, and — worse in the other direction —
+    /// would go stale the moment the transition changed.
+    /// </summary>
+    [Fact]
+    public void TheBoundFollowsTheTransitionBecauseTheClipFloorDoes()
+    {
+        using var harness = new RequestBuilderHarness();
+
+        // Jitter swamps the splice, so the floor alone decides the shortest clip. A 1.5s
+        // transition floors clips at 3s, which leaves room for a 1.5s fade at each end.
+        harness.Build(
+                "-d", "60s",
+                "--splice", "4s",
+                "--splice-jitter", "10s",
+                "--transition-duration", "1.5s",
+                "--fade-edges", "1.5s")
+            .Look.FadeEdges.ShouldBe(TimeSpan.FromSeconds(1.5));
+
+        // With transitions off the floor drops back to the bare minimum, and the same fade is
+        // now more than half the shortest clip.
+        harness.Rejection(
+                "-d", "60s",
+                "--splice", "4s",
+                "--splice-jitter", "10s",
+                "--transition", "none",
+                "--fade-edges", "1.5s")
+            .ShouldContain("0.75s");
     }
 }

@@ -99,29 +99,76 @@ public class ClipSequencerTests
         }
     }
 
-    [Theory]
-    [InlineData(960, 0.4)]
-    [InlineData(300, 0.5)]
-    [InlineData(120, 0.8)]
-    [InlineData(60, 0.4)]
-    public void FillForOutput_LandsOnTheRequestedRuntimeAfterTransitions(
-        double target,
-        double transition)
+    private static double RenderedSeconds(IReadOnlyList<Segment> sequence, double transition)
     {
-        var sequence = ClipSequencer.FillForOutput(
-            Pool(50),
-            TimeSpan.FromSeconds(target),
-            TimeSpan.FromSeconds(transition),
-            seed: 1);
-
         var effective = SplicePlanner.EffectiveTransition(
             sequence.Select(s => s.Duration).ToList(),
             TimeSpan.FromSeconds(transition));
 
-        var output = sequence.Sum(s => s.Duration.TotalSeconds)
+        return sequence.Sum(s => s.Duration.TotalSeconds)
             - (effective.TotalSeconds * (sequence.Count - 1));
+    }
 
-        output.ShouldBe(target, 0.3);
+    /// <summary>
+    /// The <c>--max-clips</c> path carries the same trimmed-tail hazard as
+    /// <see cref="SplicePlanner.PlanForOutput"/> and is swept for the same reason: it was a
+    /// four-tuple spot check, and <c>-d 120s --max-clips 8 --profile kenburns</c> was undershooting
+    /// on two seeds in five while it passed.
+    /// </summary>
+    [Theory]
+    [InlineData(0.4)]
+    [InlineData(0.5)]
+    [InlineData(0.8)]
+    [InlineData(1.5)]
+    public void FillForOutput_LandsOnTheRequestedRuntimeAfterTransitions(double transition)
+    {
+        double[] targets = [60, 120, 300, 577, 960];
+
+        foreach (var target in targets)
+        {
+            for (var seed = 1; seed <= 8; seed++)
+            {
+                var sequence = ClipSequencer.FillForOutput(
+                    Pool(8, 7),
+                    TimeSpan.FromSeconds(target),
+                    TimeSpan.FromSeconds(transition),
+                    seed);
+
+                RenderedSeconds(sequence, transition).ShouldBe(
+                    target,
+                    0.3,
+                    $"target {target}s, transition {transition}s, seed {seed}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The mechanism, asserted directly: the trimmed final slot no longer decides how much
+    /// overlap the other joins get, so the applied transition is a function of the settings
+    /// rather than of the target and the seed. That independence is what makes
+    /// <see cref="ClipSequencer.FillForOutput"/>'s compensation loop converge.
+    /// </summary>
+    [Fact]
+    public void FillForOutput_AppliesTheSameTransitionWhateverTheTargetAndSeed()
+    {
+        double[] targets = [60, 120, 300, 577];
+
+        var applied = targets
+            .SelectMany(target => Enumerable.Range(1, 8).Select(seed => (target, seed)))
+            .Select(x => SplicePlanner.EffectiveTransition(
+                [
+                    .. ClipSequencer.FillForOutput(
+                            Pool(8, 7),
+                            TimeSpan.FromSeconds(x.target),
+                            TimeSpan.FromSeconds(0.8),
+                            x.seed)
+                        .Select(s => s.Duration),
+                ],
+                TimeSpan.FromSeconds(0.8)))
+            .Distinct()
+            .ToList();
+
+        applied.ShouldBe([TimeSpan.FromSeconds(0.8)]);
     }
 
     [Fact]

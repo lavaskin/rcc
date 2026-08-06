@@ -131,25 +131,117 @@ public class PlanForOutputTests
         return durations.Sum(d => d.TotalSeconds) - (effective.TotalSeconds * (durations.Count - 1));
     }
 
+    /// <summary>
+    /// Splice, jitter and transition combinations that between them exercise every regime the
+    /// compensation has: a transition far below half a clip, one close to it, one at exactly
+    /// half, and two that exceed the splice outright.
+    /// </summary>
+    public static TheoryData<double, double, double> Cadences =>
+        new()
+        {
+            { 5, 1, 0.4 },      // default
+            { 5, 1, 0.6 },      // --profile subtle
+            { 7, 1, 0.8 },      // --profile kenburns
+            { 3, 0, 1.0 },      // 2T below the splice, no jitter to absorb the tail
+            { 2, 0.5, 1.0 },    // 2T exactly the splice
+            { 1.5, 0.3, 1.2 },  // 2T above the splice
+            { 5, 1, 2.0 },      // a transition nobody should ask for
+        };
+
+    /// <summary>
+    /// The whole point of <see cref="SplicePlanner.PlanForOutput"/>, swept rather than sampled.
+    /// <para>
+    /// This was five hand-picked tuples at one seed, and it passed throughout while
+    /// <c>--profile kenburns</c> was overshooting on one request in eight — the five happened to
+    /// be five that landed. The failure needs a particular leftover on the final clip, so it is a
+    /// property of the (target, seed) pair rather than of the settings, and no fixed list of
+    /// settings can be trusted to contain one. Hence the sweep: 7 cadences x 8 targets x 12 seeds.
+    /// </para>
+    /// </summary>
     [Theory]
-    [InlineData(960, 5, 0.4)]
-    [InlineData(90, 5, 0.4)]
-    [InlineData(300, 7, 0.8)]
-    [InlineData(60, 4, 0.5)]
-    [InlineData(30, 5, 0.4)]
+    [MemberData(nameof(Cadences))]
     public void CompensatesSoTheRenderedRuntimeMatchesTheRequest(
-        double target,
         double splice,
+        double jitter,
         double transition)
     {
-        var durations = SplicePlanner.PlanForOutput(
-            TimeSpan.FromSeconds(target),
-            TimeSpan.FromSeconds(splice),
-            TimeSpan.FromSeconds(1),
-            TimeSpan.FromSeconds(transition),
-            seed: 42);
+        double[] targets = [11, 30, 57, 90, 120, 300, 566, 595];
 
-        PredictedOutput(durations, transition).ShouldBe(target, 0.25);
+        foreach (var target in targets)
+        {
+            for (var seed = 1; seed <= 12; seed++)
+            {
+                var durations = SplicePlanner.PlanForOutput(
+                    TimeSpan.FromSeconds(target),
+                    TimeSpan.FromSeconds(splice),
+                    TimeSpan.FromSeconds(jitter),
+                    TimeSpan.FromSeconds(transition),
+                    seed);
+
+                PredictedOutput(durations, transition).ShouldBe(
+                    target,
+                    0.25,
+                    $"target {target}s, splice {splice}s, jitter {jitter}s, "
+                    + $"transition {transition}s, seed {seed}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The specific shape that used to break it: a leftover short enough to cap the overlap for
+    /// every join in the render. This rendered 36s for a 30s request.
+    /// </summary>
+    [Fact]
+    public void DoesNotOvershootWhenTheTailClipWouldHaveCappedTheTransition()
+    {
+        var durations = SplicePlanner.PlanForOutput(
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(3),
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(1),
+            seed: 4);
+
+        PredictedOutput(durations, 1).ShouldBe(30d, 0.25);
+    }
+
+    /// <summary>
+    /// The mechanism behind the fix, asserted directly so a regression is diagnosed rather than
+    /// merely detected.
+    /// <para>
+    /// The overlap that actually gets applied must be a function of the settings alone. It used
+    /// to depend on the leftover that landed on the final clip, which is a function of the target
+    /// and the seed — and that is precisely the feedback that made the compensation loop cycle
+    /// instead of converge. Note the assertion is not "the clamp never binds": a transition wider
+    /// than half the splice still clamps, because no floor can make a clip longer than the splice
+    /// that was asked for. What matters is that it clamps to the same value every time.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Cadences))]
+    public void TheAppliedTransitionDoesNotDependOnTheSeedOrTheTarget(
+        double splice,
+        double jitter,
+        double transition)
+    {
+        double[] targets = [30, 90, 300, 595];
+
+        var applied = targets
+            .SelectMany(target => Enumerable.Range(1, 12).Select(seed => (target, seed)))
+            .Select(x => SplicePlanner.EffectiveTransition(
+                SplicePlanner.PlanForOutput(
+                    TimeSpan.FromSeconds(x.target),
+                    TimeSpan.FromSeconds(splice),
+                    TimeSpan.FromSeconds(jitter),
+                    TimeSpan.FromSeconds(transition),
+                    x.seed),
+                TimeSpan.FromSeconds(transition)))
+            .Distinct()
+            .ToList();
+
+        applied.Count.ShouldBe(1, $"applied overlaps: {string.Join(", ", applied)}");
+
+        // And it is the requested transition unless the splice itself is too short to hold it.
+        applied[0].TotalSeconds.ShouldBe(Math.Min(transition, splice / 2d), 0.0001);
     }
 
     [Fact]

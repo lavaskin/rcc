@@ -531,17 +531,25 @@ internal sealed class ClipRequestBuilder
     /// The shortest clip <see cref="SplicePlanner"/> can produce for these settings.
     /// <para>
     /// Mirrors the planner's own jitter clamp: the offset is bounded so a clip can never fall
-    /// below <see cref="SplicePlanner.MinimumSegment"/>, so the floor is the nominal splice less
-    /// the jitter, and never less than that minimum.
+    /// below the planner's floor, so the shortest is the nominal splice less the jitter, and never
+    /// less than that floor.
+    /// </para>
+    /// <para>
+    /// The floor rises to twice the transition when one is in use, so this has to ask for it the
+    /// same way the planner does rather than assuming <see cref="SplicePlanner.MinimumSegment"/>.
+    /// Otherwise the two disagree in the direction that matters: this would report a shorter
+    /// clip than any the planner will emit, and admit a <c>--fade-edges</c> the render then
+    /// clamps while the summary goes on quoting the value that was asked for.
     /// </para>
     /// </summary>
     private static TimeSpan ShortestSegment(ClipRequest request)
     {
+        var floor = SplicePlanner.MinimumSegmentFor(
+            request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero);
+
         var shortest = request.SpliceLength - request.SpliceJitter;
 
-        return shortest > SplicePlanner.MinimumSegment
-            ? shortest
-            : SplicePlanner.MinimumSegment;
+        return shortest > floor ? shortest : floor;
     }
 
     /// <summary>
