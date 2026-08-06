@@ -208,9 +208,8 @@ public class ExternalAudioTests
     // --- Length reconciliation ---------------------------------------------
     //
     // The render's length is what the user asked for. An external track is a decoration on it,
-    // so a track that runs out early must not shorten it: apad fills the gap with silence. These
-    // are the regression tests for that, one per stitcher, because the two arrive at it by
-    // completely different routes.
+    // so a track that runs out early must not shorten it: apad fills the gap with silence. Both
+    // stitchers are covered, because they reach that outcome by completely different routes.
 
     [Theory]
     [InlineData(true)]
@@ -223,8 +222,8 @@ public class ExternalAudioTests
         var segments = await SegmentsAsync($"short_audio_{label}");
         var output = _fixture.PathFor($"short_audio_{label}.mp4");
 
-        // 6s of video against 6s of track offset by 4s, so only 2s of audio remains. Before apad
-        // this produced a 2s file: two thirds of the requested render silently discarded.
+        // 6s of video against 6s of track offset by 4s, so only 2s of audio remains. The render
+        // still has to be 6s: the length asked for is not negotiable by the soundtrack.
         var audio = AudioOptions.FromFile(_fixture.AudioTrack) with
         {
             Offset = TimeSpan.FromSeconds(4),

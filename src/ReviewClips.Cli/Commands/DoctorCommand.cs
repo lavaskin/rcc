@@ -143,9 +143,15 @@ internal sealed class DoctorCommand
 
         foreach (var encoder in report.Encoders)
         {
-            var verdict = encoder.Usable
-                ? "[green]yes[/]"
-                : encoder.Required ? "[red]no[/]" : Styles.Faint("no");
+            // A timeout is its own verdict. "no" would send the user looking for a build without
+            // the encoder, when the actual finding is a driver that stopped answering.
+            var verdict = encoder switch
+            {
+                { Usable: true } => "[green]yes[/]",
+                { TimedOut: true } => "[yellow]timed out[/]",
+                { Required: true } => "[red]no[/]",
+                _ => Styles.Faint("no"),
+            };
 
             table.AddRow(
                 Markup.Escape(encoder.Name) + (encoder.Required ? Styles.Faint(" (required)") : string.Empty),

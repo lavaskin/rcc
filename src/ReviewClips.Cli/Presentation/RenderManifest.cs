@@ -81,6 +81,19 @@ internal sealed record RenderManifest
     [JsonPropertyName("muted")]
     public bool Muted { get; init; }
 
+    /// <summary>
+    /// What the render sounds like, when it makes a sound. Null for a muted render, which is the
+    /// default and which <c>muted</c> already describes in full.
+    /// <para>
+    /// <c>muted: false</c> on its own does not distinguish "kept each clip's own audio" from
+    /// "muxed a file", and says nothing about which file or at what offset and gain. Both are
+    /// needed for the manifest's two purposes: reproducing the render, and explaining a
+    /// <c>targetSeconds</c> that came from the audio rather than from <c>--duration</c>.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("audio")]
+    public ManifestAudio? Audio { get; init; }
+
     [JsonPropertyName("elapsedSeconds")]
     public double? ElapsedSeconds { get; init; }
 
@@ -142,6 +155,7 @@ internal sealed record RenderManifest
             Encoder = plan.Encoder.VideoEncoder,
             Format = $"{request.Format.Width}x{request.Format.Height}@{request.Format.FrameRate:0.##}",
             Muted = request.Mute,
+            Audio = ManifestAudio.For(request.Audio),
             ElapsedSeconds = result is null ? null : Math.Round(result.Elapsed.TotalSeconds, 2),
             Warnings = plan.Warnings,
             Usage = usage,
@@ -167,6 +181,61 @@ internal sealed record RenderManifest
 
         await using var stream = File.Create(path);
         await JsonSerializer.SerializeAsync(stream, this, JsonOptions, cancellationToken);
+    }
+
+    /// <summary>The audio settings a render actually used, as far as they apply.</summary>
+    internal sealed record ManifestAudio
+    {
+        /// <summary><c>source</c> or <c>external</c>. Muted renders carry no audio block at all.</summary>
+        [JsonPropertyName("mode")]
+        public string Mode { get; init; } = string.Empty;
+
+        /// <summary>The muxed track. Absent in <c>source</c> mode, where there is no one file.</summary>
+        [JsonPropertyName("track")]
+        public string? Track { get; init; }
+
+        [JsonPropertyName("offsetSeconds")]
+        public double? OffsetSeconds { get; init; }
+
+        /// <summary>Linear gain. Absent when the track was left untouched.</summary>
+        [JsonPropertyName("volume")]
+        public double? Volume { get; init; }
+
+        /// <summary>
+        /// True when the render's length came from the track rather than from <c>--duration</c>.
+        /// This is what accounts for a <c>targetSeconds</c> that appears in no command line.
+        /// </summary>
+        [JsonPropertyName("matchedDuration")]
+        public bool? MatchedDuration { get; init; }
+
+        /// <summary>
+        /// Null for a muted render. Both this and <c>muted</c> read
+        /// <see cref="Core.Options.AudioOptions.IsMuted"/>, so they cannot disagree — including on
+        /// the <c>External</c>-without-a-path case, which that property counts as muted.
+        /// </summary>
+        public static ManifestAudio? For(Core.Options.AudioOptions audio)
+        {
+            if (audio.IsMuted)
+            {
+                return null;
+            }
+
+            return new ManifestAudio
+            {
+                Mode = audio.UsesSegmentAudio ? "source" : "external",
+                Track = audio.ExternalPath,
+
+                // Only recorded when they mean something: offset and volume have no bearing on
+                // per-segment audio, and a default gain is noise in an audit trail.
+                OffsetSeconds = audio.HasExternalTrack && audio.Offset > TimeSpan.Zero
+                    ? Math.Round(audio.Offset.TotalSeconds, 3)
+                    : null,
+                Volume = audio.HasExternalTrack && audio.AltersVolume
+                    ? Math.Round(audio.Volume, 4)
+                    : null,
+                MatchedDuration = audio.HasExternalTrack ? audio.MatchDuration : null,
+            };
+        }
     }
 
     internal sealed record SourceUsage

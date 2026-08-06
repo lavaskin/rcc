@@ -60,8 +60,15 @@ jobs:
       - name: Verify formatting
         run: dotnet format ReviewClips.slnx --verify-no-changes --verbosity minimal
 
+      # RCC_REQUIRE_FFMPEG turns the integration suite's "skip if FFmpeg is missing" gates into
+      # hard failures. Skipping is right locally, where a contributor without libzimg should not
+      # be shown red for a feature they are not touching. Here FFmpeg is installed two steps up,
+      # so a skip can only mean that step stopped working — and roughly a fifth of the suite
+      # would then quietly stop running while the job still reported green.
       - name: Test
         run: dotnet test ReviewClips.slnx --configuration Release --no-build
+        env:
+          RCC_REQUIRE_FFMPEG: '1'
 
       # Catches failures that only appear at startup — DI wiring, command tree
       # construction — which a unit test over the same types will not.

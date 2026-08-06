@@ -423,10 +423,10 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// <summary>
     /// How many audio streams a file carries.
     /// <para>
-    /// A count rather than a bool on purpose. "Has audio" cannot tell one stream from five, and
-    /// that is exactly the distinction a <c>-map N:a</c> that should have been <c>-map N:a:0</c>
-    /// turns on: the output plays correctly and quietly carries every commentary and language
-    /// track the input had.
+    /// A count rather than a bool on purpose. "Has audio" cannot tell one stream from five, which
+    /// is the difference between <c>-map N:a:0</c> and <c>-map N:a</c>: the latter takes every
+    /// stream in the input, and the result plays correctly while quietly carrying each commentary
+    /// and language track the source had.
     /// </para>
     /// </summary>
     public async Task<int> AudioStreamCountAsync(string path)

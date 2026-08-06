@@ -31,6 +31,16 @@ public sealed record EncoderStatus
     /// <summary>True only when a real two-frame encode succeeded.</summary>
     public required bool Usable { get; init; }
 
+    /// <summary>
+    /// True when the probe was abandoned rather than answered.
+    /// <para>
+    /// Kept separate from <see cref="Usable"/> because the two point at different remedies. A
+    /// failed probe means this FFmpeg build cannot do it, which calls for a different build. A
+    /// timed-out probe means the driver stopped responding, which usually calls for a reboot.
+    /// </para>
+    /// </summary>
+    public bool TimedOut { get; init; }
+
     /// <summary>The <c>generate</c> flag that would select this encoder.</summary>
     public required string SelectedBy { get; init; }
 
@@ -189,14 +199,14 @@ public sealed class EnvironmentInspector
     private static readonly (string Filter, string Feature)[] OptionalFilters =
     [
         // libzimg. The single most commonly absent component, and only HDR sources need it.
-        ("zscale", "HDR tone mapping (--tone-map)"),
-        ("tonemap", "HDR tone mapping (--tone-map)"),
-        ("setparams", "HDR tone mapping (--tone-map)"),
+        ("zscale", "HDR tone mapping (--tonemap)"),
+        ("tonemap", "HDR tone mapping (--tonemap)"),
+        ("setparams", "HDR tone mapping (--tonemap)"),
 
         // libfreetype.
         ("drawtext", "burned-in credit lines (--attribution)"),
 
-        ("gblur", "blur (--blur, and the blur-pad fit used by --preset shorts)"),
+        ("gblur", "blur (--blur, and the --fit blur-pad used by --profile shorts)"),
         ("unsharp", "sharpening (--sharpen)"),
         ("vignette", "vignette (--vignette)"),
         ("noise", "film grain (--grain)"),
@@ -209,6 +219,36 @@ public sealed class EnvironmentInspector
     /// <summary>Every filter checked, in either tier.</summary>
     private static IEnumerable<string> AllFilters =>
         RequiredFilters.Concat(OptionalFilters.Select(f => f.Filter));
+
+    /// <summary>
+    /// The optional filters and the feature text each is reported with, whether or not it is
+    /// present on this machine.
+    /// <para>
+    /// The feature text names command-line flags, and a diagnostic whose purpose is to say which
+    /// flag stopped working is actively misleading if the flag it names does not exist. These are
+    /// plain strings living in a different assembly from the option definitions, so nothing about
+    /// them stays correct on its own; exposing the list lets the CLI's tests check every flag
+    /// mentioned here against the options that actually exist.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<MissingFeature> OptionalFeatures =>
+        [.. OptionalFilters.Select(f => new MissingFeature { Filter = f.Filter, Feature = f.Feature })];
+
+    /// <summary>
+    /// How long any single probe may take before it is abandoned.
+    /// <para>
+    /// <c>doctor</c> is what you run to diagnose a broken environment, so it must stay responsive
+    /// on one. An unresponsive GPU driver does not fail a probe, it stops answering: the process
+    /// starts and never returns. Without a bound the command produces no output at all and cannot
+    /// be exited except by Ctrl+C. Generous next to a healthy probe, which encodes two frames and
+    /// takes well under a second.
+    /// </para>
+    /// <para>
+    /// Applied per probe rather than to the run as a whole, so one unresponsive encoder costs its
+    /// own row rather than the rest of the report.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(15);
 
     private readonly FfmpegRunner _runner;
     private readonly IEncoderProbe _encoderProbe;
@@ -449,9 +489,28 @@ public sealed class EnvironmentInspector
             // instead would verify whichever pair that toolset was configured with rather than
             // `path`, and it runs -version once per property, so the row cost three launches of
             // the same executable to produce.
-            result = await _runner.RunAsync(path, ["-version"], null, null, cancellationToken);
+            // Bounded like the encoder probes. A binary on an unresponsive network mount hangs
+            // here, and this runs before anything is printed, so an unbounded wait would leave
+            // the command with nothing on screen at all.
+            result = await WithTimeoutAsync(
+                token => _runner.RunAsync(path, ["-version"], null, null, token),
+                onTimeout: (FfmpegRunResult?)null,
+                map: r => (FfmpegRunResult?)r,
+                cancellationToken)
+                ?? throw new TimeoutException(
+                    $"'{path} -version' did not respond within {ProbeTimeout.TotalSeconds:0}s.");
         }
         catch (FfmpegNotFoundException ex)
+        {
+            return new ToolStatus
+            {
+                Name = name,
+                Path = path,
+                Available = false,
+                Error = ex.Message,
+            };
+        }
+        catch (TimeoutException ex)
         {
             return new ToolStatus
             {
@@ -502,10 +561,17 @@ public sealed class EnvironmentInspector
         // limit and report a working encoder as broken.
         foreach (var (encoder, flag, required) in KnownEncoders)
         {
+            var outcome = await WithTimeoutAsync(
+                token => _encoderProbe.IsUsableAsync(encoder, token),
+                onTimeout: (Usable: false, TimedOut: true),
+                map: usable => (Usable: usable, TimedOut: false),
+                cancellationToken);
+
             statuses.Add(new EncoderStatus
             {
                 Name = encoder,
-                Usable = await _encoderProbe.IsUsableAsync(encoder, cancellationToken),
+                Usable = outcome.Usable,
+                TimedOut = outcome.TimedOut,
                 SelectedBy = flag,
                 Required = required,
             });
@@ -514,10 +580,43 @@ public sealed class EnvironmentInspector
         return statuses;
     }
 
+    /// <summary>
+    /// Runs one probe under <see cref="ProbeTimeout"/>, substituting a result if it overruns.
+    /// <para>
+    /// The caller's own cancellation is deliberately not caught: a Ctrl+C has to propagate as a
+    /// cancellation, not be reported as a timed-out probe. Only the linked timeout is absorbed.
+    /// </para>
+    /// </summary>
+    private static async Task<TResult> WithTimeoutAsync<T, TResult>(
+        Func<CancellationToken, Task<T>> probe,
+        TResult onTimeout,
+        Func<T, TResult> map,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ProbeTimeout);
+
+        try
+        {
+            return map(await probe(timeout.Token));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return onTimeout;
+        }
+    }
+
     private async Task<FilterStatus> InspectFiltersAsync(CancellationToken cancellationToken)
     {
-        var result = await _runner.RunFfmpegAsync(["-hide_banner", "-filters"], cancellationToken);
-        var available = ParseFilterNames(result.StandardOutput);
+        // On a timeout, treat every filter as absent: the required ones are then reported missing
+        // and IsUsable goes false, which is the honest reading of "FFmpeg would not tell us".
+        var output = await WithTimeoutAsync(
+            token => _runner.RunFfmpegAsync(["-hide_banner", "-filters"], token),
+            onTimeout: string.Empty,
+            map: r => r.StandardOutput,
+            cancellationToken);
+
+        var available = ParseFilterNames(output);
 
         return new FilterStatus
         {

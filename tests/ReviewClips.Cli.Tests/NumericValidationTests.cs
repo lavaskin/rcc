@@ -3,8 +3,8 @@ using ReviewClips.Cli.Profiles;
 namespace ReviewClips.Cli.Tests;
 
 /// <summary>
-/// The numeric bounds, and the two ways they used to be escapable: a non-finite value, and a
-/// value that arrived from a profile instead of from the command line.
+/// The numeric bounds, and the two ways a value can reach them other than by being typed as a
+/// plain number: as NaN or infinity, and as a setting layered in from a profile.
 /// </summary>
 public class NumericValidationTests
 {
@@ -43,11 +43,11 @@ public class NumericValidationTests
     /// <summary>
     /// The same options, given NaN or infinity.
     /// <para>
-    /// Not a theoretical concern: <c>System.CommandLine</c>'s double binder parses both, and every
-    /// comparison against NaN is false, so a bound written as <c>is &lt; 0d or &gt; 1d</c> lets
-    /// NaN through. It then reaches FFmpeg as the literal <c>NaN</c> — and for
-    /// <c>--max-source-percent</c> it silently switched the guardrail off, because
-    /// <c>Limit &gt; 0d</c> is false for NaN too.
+    /// Reachable from the command line: <c>System.CommandLine</c>'s double binder parses both.
+    /// They need their own coverage because every comparison against NaN is false, so a bound
+    /// expressed as <c>is &lt; 0d or &gt; 1d</c> admits NaN rather than rejecting it. A NaN that
+    /// gets through reaches FFmpeg as the literal <c>NaN</c>, and as <c>--max-source-percent</c>
+    /// it disables the guardrail outright, since <c>Limit &gt; 0d</c> is false for it too.
     /// </para>
     /// </summary>
     [Theory]
@@ -97,7 +97,7 @@ public class NumericValidationTests
         using var harness = new RequestBuilderHarness();
 
         // The help text says 1.1-16 and the stage clamps to 1.1, so validation has to agree with
-        // both. 1.05 used to be accepted and then silently corrected to 1.1.
+        // both: a value it accepts must be one the stage will use unchanged.
         harness.Rejection("-d", "20s", "--pixelate", value)
             .ShouldContain("--pixelate");
     }

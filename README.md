@@ -153,7 +153,7 @@ gates an opt-in flag is reported as a limitation, naming the flag it disables:
 
 ```
 ok every filter a default render needs is present
--- zscale missing, so HDR tone mapping (--tone-map) is unavailable
+-- zscale missing, so HDR tone mapping (--tonemap) is unavailable
 -- drawtext missing, so burned-in credit lines (--attribution) is unavailable
 Environment is usable with the limitations noted above.
 ```
@@ -337,8 +337,9 @@ the plan summary reports whichever one is actually applied.
 
 `--fade-edges` is not the same thing as `--transition`. A transition overlaps two neighbouring
 clips and forces the filter-graph stitcher; `--fade-edges` applies within each clip during
-extraction, so `--transition none` still joins the result by stream copy. It is applied at both
-ends of every clip, so it may be at most half of `--splice`.
+extraction, so it does not by itself prevent the stream-copy join (which needs `--transition none`
+together with both fades at `0`). It is applied at both ends of every clip, so it may be at most
+half of the shortest clip — that is, half of `--splice` less `--splice-jitter`.
 
 `--attribution` takes arbitrary text. Titles containing `:`, `'`, `%`, `,` or brackets are handled
 correctly:
@@ -409,11 +410,13 @@ built to the length of the track rather than trimmed to it. It cannot be combine
 `--duration`, since both set the same thing.
 
 With an external track the per-clip source audio is not extracted at all, and muxing does not cost
-a video re-encode: `--transition none` remains a stream copy.
+a video re-encode: only the audio is encoded, so a render already taking the stream-copy join
+(`--transition none` with both fades at `0`) keeps it.
 
 `--fade-in` and `--fade-out` fade the audio on exactly the same schedule as the picture, so a bed
-does not carry on at full volume over a frame fading to black. If the track runs out before the
-video does, `-shortest` ends the file there and the closing fade goes with it.
+does not carry on at full volume over a frame fading to black. A track shorter than the render is
+padded with silence rather than shortening the video, and the shortfall is reported as a warning;
+a track longer than the render is trimmed to it.
 
 ### Analysis
 
@@ -440,6 +443,12 @@ the guardrail tests. Each entry in `sourceUsage` carries the same breakdown for 
 `totalSeconds` is screen time including repeats, `distinctSeconds` the union, and `fraction` the
 share of that title's `availableSeconds`. Sources that were supplied but never drawn from appear
 with a fraction of zero, since "we had this and took none of it" is part of the record.
+
+A render that makes a sound also carries an `audio` block, so `muted: false` is never ambiguous
+between "kept each clip's own audio" and "muxed a file". For an external track it records the
+`track`, plus `offsetSeconds`, `volume` and `matchedDuration` where they apply — which is also what
+explains a `targetSeconds` that came from the audio rather than from `--duration`. Muted renders
+have no `audio` block at all, since `muted` already says everything there is to say.
 
 ### Limiting source footage used
 

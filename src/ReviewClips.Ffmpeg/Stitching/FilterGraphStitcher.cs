@@ -95,7 +95,10 @@ public sealed class FilterGraphStitcher : IStitcher
 
         if (externalAudioIndex is { } audioIndex)
         {
-            arguments.AddRange(["-map", $"{audioIndex}:a"]);
+            // ':a:0' rather than ':a'. The bare form is a stream specifier matching every audio
+            // stream in the input, so a track carrying commentary or several language dubs would
+            // contribute all of them, each re-encoded at -b:a.
+            arguments.AddRange(["-map", $"{audioIndex}:a:0"]);
             arguments.AddRange(["-c:a", "aac"]);
             arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
             arguments.AddRange(["-ac", "2"]);
@@ -109,18 +112,21 @@ public sealed class FilterGraphStitcher : IStitcher
                 audioFilters.Add($"volume={Number(audio.Volume)}");
             }
 
+            // Pads the track with silence so it can never be the shorter of the two streams,
+            // which would otherwise make -shortest below cut the video short at whatever point
+            // the audio ran out. Ahead of the fades rather than after them, so the closing afade
+            // still has a stream to act on at the timestamp it was computed for.
+            audioFilters.Add("apad");
+
             // Matched to the video fades so the bed does not carry on at full volume over a
             // picture fading to black. Timed against the video, which is what the fades were
-            // computed from; if -shortest ends the file early because the track ran out first,
-            // the closing fade is truncated with it.
+            // computed from, and apad above guarantees the stream still exists at that point.
             audioFilters.AddRange(plan.AudioFadeFilters());
 
-            if (audioFilters.Count > 0)
-            {
-                arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
-            }
+            arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
 
-            // Stops a track longer than the render from padding the output with still video.
+            // apad leaves the audio effectively endless, so this always ends the file on the
+            // video: a longer track is trimmed to the render, a shorter one filled with silence.
             arguments.Add("-shortest");
         }
         else if (request.UsesSegmentAudio)

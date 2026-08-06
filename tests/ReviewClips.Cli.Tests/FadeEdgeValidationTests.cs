@@ -18,7 +18,7 @@ public class FadeEdgeValidationTests
         using var harness = new RequestBuilderHarness();
 
         // --splice 4s with the default 1s jitter means clips as short as 3s, so the ceiling is
-        // 1.5s. 2s used to be accepted here and then clamped down inside the filter graph.
+        // 1.5s. 2s has to be refused here rather than clamped later inside the filter graph.
         var message = harness.Rejection("-d", "60s", "--splice", "4s", "--fade-edges", "2s");
 
         message.ShouldContain("--fade-edges");

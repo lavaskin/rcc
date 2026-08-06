@@ -15,9 +15,9 @@ namespace ReviewClips.Ffmpeg.Tests.Integration;
 /// <para>
 /// Every segment must come out with the same stream layout, whatever its source had. The concat
 /// demuxer needs that for a clean stream copy, and the filter graph references <c>[k:a]</c> for
-/// every input and refuses to bind if one input lacks it. Writing a bare <c>-an</c> segment for a
-/// silent source broke both, and did so only at the stitch — after every segment had been
-/// encoded.
+/// every input and refuses to bind if one input lacks it. A segment written with no audio at all
+/// therefore fails at the stitch rather than at the extraction, which is the most expensive place
+/// to find out: every segment has been encoded by then.
 /// </para>
 /// </summary>
 [Collection(FfmpegTestGroup.Name)]
@@ -73,8 +73,8 @@ public class SilentSourceAudioTests
     }
 
     /// <summary>
-    /// SimpleClip is synthesised from testsrc2 and carries no audio at all, which is the case
-    /// that used to produce a segment with no audio stream.
+    /// SimpleClip is synthesised from testsrc2 and carries no audio at all, so it is the source
+    /// that leaves the extractor with nothing to copy.
     /// </summary>
     [Fact]
     public async Task ASilentSourceStillYieldsASegmentWithAnAudioStream()

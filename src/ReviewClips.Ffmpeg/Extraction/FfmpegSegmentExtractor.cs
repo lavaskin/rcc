@@ -81,11 +81,34 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-t", Seconds(readDuration)]);
         arguments.AddRange(["-i", segment.SourcePath]);
 
+        var nextInput = 1;
+
         var overlayIndex = default(int?);
         if (!string.IsNullOrWhiteSpace(look.OverlayPath))
         {
             arguments.AddRange(["-i", look.OverlayPath]);
-            overlayIndex = 1;
+            overlayIndex = nextInput++;
+        }
+
+        // Segment audio is wanted, but this particular source has no audio stream. Both stitchers
+        // require every segment to carry the same stream layout — the concat demuxer for a clean
+        // stream copy, the filter graph because it references [k:a] for each input and cannot bind
+        // if one is absent — so silence stands in and keeps the layout uniform. That is what lets
+        // a source set mixing silent and sounded files be joined at all.
+        //
+        // Bounded by the segment's own length rather than readDuration: anullsrc is infinite, and
+        // the silence is generated at output rate, so it needs no speed compensation.
+        var silenceIndex = default(int?);
+        if (!request.Mute && !request.Source.HasAudio)
+        {
+            arguments.AddRange(
+            [
+                "-f", "lavfi",
+                "-t", Seconds(segment.Duration),
+                "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+            ]);
+
+            silenceIndex = nextInput++;
         }
 
         var context = new FilterContext
@@ -115,18 +138,20 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         // finished file.
         arguments.AddRange(["-map_chapters", "-1"]);
 
-        if (request.Mute || !request.Source.HasAudio)
+        if (request.Mute)
         {
             arguments.Add("-an");
         }
         else
         {
-            arguments.AddRange(["-map", "0:a:0?"]);
+            arguments.AddRange(["-map", silenceIndex is { } silence ? $"{silence}:a:0" : "0:a:0?"]);
             arguments.AddRange(["-c:a", "aac"]);
             arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
             arguments.AddRange(["-ac", "2"]);
 
-            if (look.HasSpeedChange)
+            // Not applied to substituted silence: it was generated at the finished length
+            // already, so retiming it would make it disagree with the video.
+            if (look.HasSpeedChange && silenceIndex is null)
             {
                 // atempo only accepts 0.5-2.0 per instance; chain to reach further extremes.
                 arguments.AddRange(["-filter:a", BuildAtempoChain(look.Speed)]);

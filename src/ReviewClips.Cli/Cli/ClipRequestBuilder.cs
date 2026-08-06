@@ -4,6 +4,7 @@ using System.Text;
 using ReviewClips.Cli.Profiles;
 using ReviewClips.Core.Analysis;
 using ReviewClips.Core.Options;
+using ReviewClips.Core.Planning;
 using ReviewClips.Core.Sources;
 
 namespace ReviewClips.Cli.Cli;
@@ -217,13 +218,32 @@ internal sealed class ClipRequestBuilder
             ManifestPath = parse.GetValue(_options.Manifest),
         };
 
-        var output = outputOverride
-            ?? parse.GetValue(_options.Output)
-            ?? DeriveOutputName(result, profileName);
+        // Only an explicit path is resolved here; a derived one is not. The derived name encodes
+        // the target duration, which --match-audio takes from the audio track during planning, so
+        // the name cannot be settled until the plan is. An empty path means "not chosen yet", and
+        // the commands fill it in through EnsureOutputPath once PlanAsync has returned.
+        var output = outputOverride ?? parse.GetValue(_options.Output);
 
-        result = result with { OutputPath = Path.GetFullPath(output) };
+        result = result with
+        {
+            OutputPath = output is null ? string.Empty : Path.GetFullPath(output),
+        };
 
-        Validate(result);
+        // Validation messages name the flag a bound belongs to, which is the right hint when the
+        // value was typed and the wrong place to look when it came from a profile. The builder
+        // tracks no per-field provenance, so the profile is offered as a second candidate rather
+        // than asserted as the culprit.
+        try
+        {
+            Validate(result);
+        }
+        catch (CliUsageException ex) when (!string.IsNullOrWhiteSpace(profileName))
+        {
+            throw new CliUsageException(
+                $"{ex.Message} Check the option, or profile '{profileName}'.",
+                ex);
+        }
+
         ValidateAudio(parse, result);
         return result;
     }
@@ -344,6 +364,43 @@ internal sealed class ClipRequestBuilder
         }
     }
 
+    /// <summary>
+    /// Rejects a value outside <c>[min, max]</c>, and any value that is not a finite number.
+    /// <para>
+    /// The finiteness test is why this is a helper rather than an inline range check. Every
+    /// comparison against NaN is false, so an out-of-range test such as
+    /// <c>if (x is &lt; 0d or &gt; 1d)</c> admits NaN instead of rejecting it, and
+    /// <c>System.CommandLine</c>'s <c>double</c> binder accepts both "nan" and "infinity". A NaN
+    /// that gets past here reaches FFmpeg as the literal string <c>NaN</c>, and as a source-usage
+    /// limit it switches the guardrail off entirely, since <c>Limit &gt; 0d</c> is false for it.
+    /// </para>
+    /// </summary>
+    private static void RequireRange(double value, double min, double max, string message)
+    {
+        if (!double.IsFinite(value) || value < min || value > max)
+        {
+            throw new CliUsageException(message);
+        }
+    }
+
+    /// <summary>As <see cref="RequireRange"/>, but the lower bound is exclusive: <c>(min, max]</c>.</summary>
+    private static void RequireAbove(double value, double min, double max, string message)
+    {
+        if (!double.IsFinite(value) || value <= min || value > max)
+        {
+            throw new CliUsageException(message);
+        }
+    }
+
+    /// <summary>
+    /// The single funnel every request passes through, whatever set its values.
+    /// <para>
+    /// Phrased against the resolved <see cref="ClipRequest"/> rather than the parse result, so a
+    /// value from a profile is held to the same bounds as one typed on the command line. A profile
+    /// is a config file rather than a trusted source, and anything it sets that escapes a bound
+    /// here surfaces as a mid-render FFmpeg failure instead of a usage error.
+    /// </para>
+    /// </summary>
     private static void Validate(ClipRequest request)
     {
         if (request.TargetDuration <= TimeSpan.Zero)
@@ -363,44 +420,57 @@ internal sealed class ClipRequestBuilder
                 + $"--duration ({request.TargetDuration.TotalSeconds:0.#}s).");
         }
 
-        if (request.Format.FrameRate is <= 0 or > 240)
+        // Negative jitter would hand SplicePlanner a reversed range. Only a profile can set it,
+        // since the CLI parser rejects a negative duration outright.
+        if (request.SpliceJitter < TimeSpan.Zero)
         {
-            throw new CliUsageException("--fps must be between 0 and 240.");
+            throw new CliUsageException("--splice-jitter cannot be negative.");
         }
+
+        // A non-positive dimension reaches FFmpeg as scale=-100:-50 and fails there. Only a
+        // profile can produce one, since TryParseResolution rejects it on the CLI path, but the
+        // bound belongs here so both paths answer the same way.
+        if (request.Format.Width <= 0 || request.Format.Height <= 0)
+        {
+            throw new CliUsageException(
+                $"Output resolution must be positive, but is {request.Format.Width}x{request.Format.Height}.");
+        }
+
+        RequireAbove(request.Format.FrameRate, 0d, 240d, "--fps must be between 0 and 240.");
 
         if (request.MaxDistinctClips is { } cap && cap < 1)
         {
             throw new CliUsageException("--max-clips must be at least 1.");
         }
 
-        if (request.MaxSourceFraction is < 0d or > 1d)
-        {
-            throw new CliUsageException("--max-source-percent must be between 0 and 100.");
-        }
+        RequireRange(
+            request.MaxSourceFraction, 0d, 1d, "--max-source-percent must be between 0 and 100.");
 
         if (request.Encoder.Quality is < 0 or > 51)
         {
             throw new CliUsageException("--quality must be between 0 and 51.");
         }
 
-        if (request.Look.Speed <= 0)
-        {
-            throw new CliUsageException("--speed must be greater than zero.");
-        }
+        RequireAbove(request.Look.Speed, 0d, double.MaxValue, "--speed must be greater than zero.");
+        RequireAbove(request.Look.Gamma, 0d, 10d, "--gamma must be between 0 and 10.");
+        RequireRange(request.Look.Sharpen, 0d, 3d, "--sharpen must be between 0 and 3.");
+        RequireRange(request.Look.Darken, 0d, 1d, "--darken must be between 0 and 1.");
+        RequireRange(request.Look.Saturation, 0d, 3d, "--saturation must be between 0 and 3.");
+        RequireRange(request.Look.Contrast, 0d, 3d, "--contrast must be between 0 and 3.");
+        RequireRange(request.Look.Blur, 0d, 50d, "--blur must be between 0 and 50.");
+        RequireRange(request.Look.OverlayOpacity, 0d, 1d, "--overlay-opacity must be between 0 and 1.");
+        RequireRange(request.Look.Grain, 0d, 100d, "--grain must be between 0 and 100.");
 
-        if (request.Look.Gamma is <= 0d or > 10d)
-        {
-            throw new CliUsageException("--gamma must be between 0 and 10.");
-        }
+        // Zoom is a scale factor, so below 1 is a zoom out and exactly 1 is off. Zero or
+        // negative is not a slower zoom, it is an inverted or collapsed frame.
+        RequireAbove(request.Look.ZoomEnd, 0d, 8d, "--zoom must be between 0 and 8.");
 
-        if (request.Look.Sharpen is < 0d or > 3d)
+        // 0 is "off" and is the default; anything else has to be a real magnification factor.
+        // The floor is 1.1 to match both the help text and the value PixelateStage clamps to, so
+        // an accepted value is never quietly adjusted downstream.
+        if (request.Look.Pixelate != 0d)
         {
-            throw new CliUsageException("--sharpen must be between 0 and 3.");
-        }
-
-        if (request.Look.Pixelate is not 0d and (< 1d or > 16d))
-        {
-            throw new CliUsageException("--pixelate must be between 1 and 16.");
+            RequireRange(request.Look.Pixelate, 1.1d, 16d, "--pixelate must be 0, or between 1.1 and 16.");
         }
 
         if (request.Look.FadeEdges < TimeSpan.Zero)
@@ -410,15 +480,31 @@ internal sealed class ClipRequestBuilder
 
         // Half, not the whole length: --fade-edges is applied twice, once at each end, so a
         // value above half the clip makes the two fades meet in the middle and the clip never
-        // reaches full brightness. FadeEdgesStage clamps to exactly this, and a limit that let
-        // through values the stage then silently corrects would be no limit at all.
-        if (request.Look.HasFadeEdges && request.Look.FadeEdges * 2 > request.SpliceLength)
+        // reaches full brightness.
+        //
+        // Measured against the shortest clip the settings can produce, not against --splice.
+        // --splice is a midpoint that --splice-jitter varies each clip around, so the nominal
+        // figure describes no clip in particular and the short ones are where a fade runs out of
+        // room. FadeEdgesStage clamps whatever it is given, so a bound checked against the
+        // midpoint would admit values the stage then quietly reduces, while the plan summary goes
+        // on reporting the figure that was asked for.
+        if (request.Look.HasFadeEdges)
         {
-            throw new CliUsageException(
-                $"--fade-edges ({request.Look.FadeEdges.TotalSeconds:0.##}s) must be at most half "
-                + $"of --splice ({request.SpliceLength.TotalSeconds:0.##}s), i.e. "
-                + $"{(request.SpliceLength / 2).TotalSeconds:0.##}s. It is applied at both ends, "
-                + "so anything longer means every clip fades for its whole length.");
+            var shortest = ShortestSegment(request);
+
+            if (request.Look.FadeEdges * 2 > shortest)
+            {
+                var qualifier = request.SpliceJitter > TimeSpan.Zero
+                    ? $" (--splice {request.SpliceLength.TotalSeconds:0.##}s varied by "
+                      + $"--splice-jitter {request.SpliceJitter.TotalSeconds:0.##}s)"
+                    : string.Empty;
+
+                throw new CliUsageException(
+                    $"--fade-edges ({request.Look.FadeEdges.TotalSeconds:0.##}s) must be at most half "
+                    + $"of the shortest clip, {shortest.TotalSeconds:0.##}s{qualifier}, i.e. "
+                    + $"{(shortest / 2).TotalSeconds:0.##}s. It is applied at both ends, "
+                    + "so anything longer means every clip fades for its whole length.");
+            }
         }
 
         if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)
@@ -438,11 +524,60 @@ internal sealed class ClipRequestBuilder
 
         var floor = request.Selection.Scoring.MotionFloorMultiple;
         var ceiling = request.Selection.Scoring.MotionCeilingMultiple;
+
+        RequireRange(floor, 0d, 100d, "--motion-floor must be between 0 and 100.");
+        RequireRange(ceiling, 0d, 100d, "--motion-ceiling must be between 0 and 100.");
+
         if (floor >= ceiling)
         {
             throw new CliUsageException(
                 $"--motion-floor ({floor:0.##}) must be below --motion-ceiling ({ceiling:0.##}).");
         }
+    }
+
+    /// <summary>
+    /// The shortest clip <see cref="SplicePlanner"/> can produce for these settings.
+    /// <para>
+    /// Mirrors the planner's own jitter clamp: the offset is bounded so a clip can never fall
+    /// below <see cref="SplicePlanner.MinimumSegment"/>, so the floor is the nominal splice less
+    /// the jitter, and never less than that minimum.
+    /// </para>
+    /// </summary>
+    private static TimeSpan ShortestSegment(ClipRequest request)
+    {
+        var shortest = request.SpliceLength - request.SpliceJitter;
+
+        return shortest > SplicePlanner.MinimumSegment
+            ? shortest
+            : SplicePlanner.MinimumSegment;
+    }
+
+    /// <summary>
+    /// Fills in a derived output path when the user did not name one.
+    /// <para>
+    /// Takes the request the pipeline settled on rather than the one <see cref="Build"/> returned.
+    /// The derived name states the render's duration, and <c>--match-audio</c> replaces that
+    /// duration during planning, so a name taken from the pre-plan request describes a render that
+    /// is not the one about to be produced — and two tracks of different lengths would derive the
+    /// same name and write over each other.
+    /// </para>
+    /// <para>
+    /// Idempotent, so a caller that has already resolved a path can pass it through unexamined.
+    /// </para>
+    /// </summary>
+    internal static ClipRequest EnsureOutputPath(ClipRequest request, string? profileName)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!string.IsNullOrEmpty(request.OutputPath))
+        {
+            return request;
+        }
+
+        return request with
+        {
+            OutputPath = Path.GetFullPath(DeriveOutputName(request, profileName)),
+        };
     }
 
     /// <summary>

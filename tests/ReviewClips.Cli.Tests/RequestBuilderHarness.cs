@@ -10,10 +10,9 @@ namespace ReviewClips.Cli.Tests;
 /// Parses a command line the way <c>rcc generate</c> does and hands back the resolved request.
 /// <para>
 /// Goes through the real <see cref="GenerateOptions"/> and the real parser rather than
-/// constructing a <see cref="ClipRequest"/> directly. The whole point is to cover the path a
-/// user's arguments actually take — option binding, profile layering, then validation — because
-/// every bug this class exists to pin lived in the joins between those three, not inside any one
-/// of them.
+/// constructing a <see cref="ClipRequest"/> directly, so tests cover the path a user's arguments
+/// actually take: option binding, then profile layering, then validation. The interesting
+/// behaviour is in the joins between those three, and a hand-built request has no joins.
 /// </para>
 /// </summary>
 internal sealed class RequestBuilderHarness : IDisposable

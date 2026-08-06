@@ -17,6 +17,13 @@ public sealed class RenderPipeline
     /// </summary>
     private const int MaxHardwareSessions = 8;
 
+    /// <summary>
+    /// How far an external track may fall short of the render before it is remarked upon. Wide
+    /// enough to absorb frame quantisation and the splice planner's convergence tolerance, so
+    /// only a genuinely short track is reported.
+    /// </summary>
+    private static readonly TimeSpan ShortAudioTolerance = TimeSpan.FromSeconds(0.25);
+
     private readonly IMediaProbe _probe;
     private readonly IMediaAnalyzer _analyzer;
     private readonly IAnalysisCache _cache;
@@ -98,14 +105,39 @@ public sealed class RenderPipeline
         // the wrong number.
         // The request itself is rebound rather than a local being threaded through, so that the
         // plan, the summary and the manifest all report the duration the render actually has.
-        if (request.Audio is { MatchDuration: true, HasExternalTrack: true })
+        if (request.Audio.HasExternalTrack)
         {
-            var matched = await ResolveAudioTargetAsync(request.Audio, cancellationToken);
-            request = request with { TargetDuration = matched };
+            if (request.Audio.MatchDuration)
+            {
+                var matched = await ResolveAudioTargetAsync(request.Audio, cancellationToken);
+                request = request with { TargetDuration = matched };
 
-            observer.OnPhaseStarted(
-                RenderPhase.Probing,
-                $"matching audio: {matched.TotalSeconds:0.#}s");
+                observer.OnPhaseStarted(
+                    RenderPhase.Probing,
+                    $"matching audio: {matched.TotalSeconds:0.#}s");
+            }
+            else
+            {
+                // The stitcher pads a track shorter than the render with silence, so the output
+                // is the right length whether or not anything is said here. It is still worth
+                // saying: the padding leaves no trace in the file, and a render that falls silent
+                // partway through is rarely what was intended. This is the point at which both
+                // lengths are known.
+                //
+                // A warning rather than a failure, and only when the length could be read.
+                // Nothing depends on the answer as it does under --match-audio, so a container
+                // that reports no duration must not fail a render that never needed one.
+                var usable = await TryResolveAudioLengthAsync(request.Audio, cancellationToken);
+
+                if (usable is { } available && available + ShortAudioTolerance < request.TargetDuration)
+                {
+                    warnings.Add(
+                        $"'{Path.GetFileName(request.Audio.ExternalPath)}' supplies "
+                        + $"{available.TotalSeconds:0.#}s of audio for a "
+                        + $"{request.TargetDuration.TotalSeconds:0.#}s render; the rest is silent. "
+                        + "Use --match-audio to size the render to the track instead.");
+                }
+            }
         }
 
         // 3. Plan the cadence up front so both selection and stitching agree on lengths.
@@ -413,7 +445,8 @@ public sealed class RenderPipeline
 
         var request = plan.Request;
         var infoByPath = plan.Sources.ToDictionary(s => s.Path, s => s.Info, StringComparer.Ordinal);
-        var workDir = Path.Combine(Path.GetTempPath(), "reviewclips", "dry-run");
+        // Illustrative only: nothing is written here, so it is not created.
+        var workDir = Path.Combine(Primitives.ScratchPaths.Work, "dry-run");
         var extension = Path.GetExtension(request.OutputPath) is { Length: > 1 } ext ? ext : ".mp4";
 
         var lines = new List<string>();
@@ -464,6 +497,28 @@ public sealed class RenderPipeline
 
         lines.Add("ffmpeg " + Quote(ResolveStitcher(stitchRequest).DescribeArguments(stitchRequest)));
         return lines;
+    }
+
+    /// <summary>
+    /// The external track's usable length, or null when it could not be measured.
+    /// <para>
+    /// The non-throwing counterpart to <see cref="ResolveAudioTargetAsync"/>, for the callers
+    /// that only want to comment on the length rather than derive anything from it.
+    /// </para>
+    /// </summary>
+    private async Task<TimeSpan?> TryResolveAudioLengthAsync(
+        Options.AudioOptions audio,
+        CancellationToken cancellationToken)
+    {
+        var total = await _probe.ProbeDurationAsync(audio.ExternalPath!, cancellationToken);
+
+        if (total <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        var remaining = total - audio.Offset;
+        return remaining > TimeSpan.Zero ? remaining : null;
     }
 
     /// <summary>
@@ -581,12 +636,17 @@ public sealed class RenderPipeline
 
     private static string CreateWorkingDirectory(ClipRequest request)
     {
-        var root = request.WorkingDirectory
-            ?? Path.Combine(Path.GetTempPath(), "reviewclips");
+        var explicitRoot = request.WorkingDirectory;
+        var root = explicitRoot ?? Primitives.ScratchPaths.Work;
 
         var dir = Path.Combine(root, $"run_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N")[..8]}");
-        Directory.CreateDirectory(dir);
-        return dir;
+
+        // An explicitly chosen directory is the user's to manage, permissions included. The
+        // default lives under the per-user scratch root and is locked down, since it holds
+        // extracted footage for the length of the render.
+        return explicitRoot is null
+            ? Primitives.ScratchPaths.EnsureDirectory(dir)
+            : Directory.CreateDirectory(dir).FullName;
     }
 
     private static void EnsureOutputDirectory(string outputPath)

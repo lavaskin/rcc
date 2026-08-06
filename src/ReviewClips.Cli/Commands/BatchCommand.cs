@@ -84,16 +84,21 @@ internal sealed class BatchCommand
             var seed = unchecked(baseSeed + (i * 7919));
             var variant = template with { Selection = template.Selection with { Seed = seed } };
 
-            var stem = fixedStem
-                ?? Path.GetFileNameWithoutExtension(ClipRequestBuilder.DeriveOutputName(variant, profileName));
-
-            var output = Path.Combine(directory, $"{stem}-{i + 1:D2}.mp4");
-            var request = variant with { OutputPath = Path.GetFullPath(output) };
-
             console.MarkupLine($"[bold]variant {i + 1}/{count}[/] {Styles.Faint($"seed {seed}")}");
 
+            // Planned before the name is chosen, as in `generate`: the derived stem states the
+            // target duration, which --match-audio settles during planning.
             var observer = new ConsoleRenderObserver(console);
-            var plan = await pipeline.PlanAsync(request, observer, cancellationToken);
+            var plan = await pipeline.PlanAsync(variant, observer, cancellationToken);
+
+            var stem = fixedStem
+                ?? Path.GetFileNameWithoutExtension(
+                    ClipRequestBuilder.DeriveOutputName(plan.Request, profileName));
+
+            var output = Path.GetFullPath(Path.Combine(directory, $"{stem}-{i + 1:D2}.mp4"));
+
+            plan = plan with { Request = plan.Request with { OutputPath = output } };
+            var request = plan.Request;
 
             if (request.DryRun)
             {

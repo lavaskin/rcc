@@ -42,12 +42,14 @@ public sealed class JsonAnalysisCache : IAnalysisCache
     public static string DefaultCacheDirectory()
     {
         var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrEmpty(baseDir))
-        {
-            baseDir = Path.GetTempPath();
-        }
 
-        return Path.Combine(baseDir, "reviewclips", "analysis");
+        // LocalApplicationData is already per-user on both platforms and is the right home for a
+        // cache that should survive a reboot. It can come back empty in a container with no
+        // HOME set, and the fallback then has to supply the per-user scoping itself rather than
+        // dropping the cache into a directory shared with every other account on the machine.
+        return string.IsNullOrEmpty(baseDir)
+            ? Path.Combine(Core.Primitives.ScratchPaths.Root, "analysis")
+            : Path.Combine(baseDir, "reviewclips", "analysis");
     }
 
     public string CacheDirectory => _root;

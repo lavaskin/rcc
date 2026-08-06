@@ -87,20 +87,33 @@ public sealed class ConcatDemuxerStitcher : IStitcher
             // The whole point of this stitcher survives muxing: the video is still copied, never
             // re-encoded, so a transition-free render stays a sub-second operation no matter how
             // long it is. Only the audio is touched.
-            arguments.AddRange(["-map", "0:v", "-map", "1:a"]);
+            //
+            // ':a:0' rather than ':a'. The bare form is a stream specifier matching every audio
+            // stream in the input, so a track carrying commentary or several language dubs would
+            // contribute all of them, each re-encoded at -b:a.
+            arguments.AddRange(["-map", "0:v", "-map", "1:a:0"]);
             arguments.AddRange(["-c:v", "copy"]);
             arguments.AddRange(["-c:a", "aac"]);
             arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
             arguments.AddRange(["-ac", "2"]);
 
+            // Always a chain, because apad is unconditional.
+            var audioFilters = new List<string>(2);
+
             if (audio.AltersVolume)
             {
-                arguments.AddRange(["-filter:a", $"volume={Number(audio.Volume)}"]);
+                audioFilters.Add($"volume={Number(audio.Volume)}");
             }
 
-            // Whichever of the two runs out first ends the file. With --match-audio they are the
-            // same length by construction; without it this is what stops a five-minute track
-            // padding a one-minute render.
+            // Pads the track with silence so it can never be the shorter of the two streams,
+            // which would otherwise make -shortest below end the file wherever the audio ran out.
+            // The render's length is what was asked for; the track is a decoration on it.
+            audioFilters.Add("apad");
+
+            arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
+
+            // apad leaves the audio effectively endless, so this always ends the file on the
+            // video: a longer track is trimmed to the render, a shorter one filled with silence.
             arguments.Add("-shortest");
         }
         else

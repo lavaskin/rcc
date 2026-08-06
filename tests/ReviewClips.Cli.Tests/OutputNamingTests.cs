@@ -6,10 +6,11 @@ namespace ReviewClips.Cli.Tests;
 /// <summary>
 /// Where the output filename comes from, and when.
 /// <para>
-/// The timing is the whole subject. The derived name encodes the render's target duration, and
-/// <c>--match-audio</c> replaces that duration during planning — so a name chosen at build time
-/// carried the placeholder, and two renders matched to tracks of different lengths agreed on a
-/// filename and silently overwrote each other.
+/// The timing is the whole subject. A derived name states the render's target duration, and
+/// <c>--match-audio</c> takes that duration from the audio track during planning. A name is
+/// therefore only meaningful once the plan exists: chosen any earlier it describes a render that
+/// will not be produced, and two tracks of different lengths derive the same name and write over
+/// each other.
 /// </para>
 /// </summary>
 public class OutputNamingTests
@@ -26,7 +27,7 @@ public class OutputNamingTests
     }
 
     /// <summary>
-    /// The contract that makes the fix work: no name is chosen during Build, so nothing can
+    /// The contract the rest of this rests on: no name is chosen during Build, so nothing can
     /// commit to one before the pipeline has settled the duration.
     /// </summary>
     [Fact]
@@ -51,9 +52,9 @@ public class OutputNamingTests
     }
 
     /// <summary>
-    /// The regression test for the naming bug. The pipeline hands EnsureOutputPath a request whose
-    /// TargetDuration has already been replaced by the track's length, so the name has to follow
-    /// that rather than the 60s default the builder started from.
+    /// The pipeline hands EnsureOutputPath a request whose TargetDuration has already been
+    /// replaced by the track's length, so the name has to follow that rather than the 60s default
+    /// the builder started from.
     /// </summary>
     [Fact]
     public void TheDerivedNameFollowsAMatchedAudioDuration()
@@ -71,8 +72,8 @@ public class OutputNamingTests
     }
 
     /// <summary>
-    /// The consequence that actually cost data: same source, same settings, two different beds,
-    /// one filename. The second render overwrote the first.
+    /// The property that keeps renders from destroying one another: same source, same settings,
+    /// two beds of different lengths, two names.
     /// </summary>
     [Fact]
     public void TracksOfDifferentLengthsDoNotCollideOnOneName()

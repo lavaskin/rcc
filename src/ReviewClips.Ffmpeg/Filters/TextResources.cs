@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using ReviewClips.Core.Primitives;
 
 namespace ReviewClips.Ffmpeg.Filters;
 
@@ -13,11 +14,12 @@ namespace ReviewClips.Ffmpeg.Filters;
 /// half-written file.
 /// </para>
 /// <para>
-/// Files live under a per-user directory rather than directly in the system temp directory.
-/// On a shared machine <c>/tmp/reviewclips/text</c> is a path anybody can predict and create
-/// first, and since the fast path below trusts an existing file by name alone, that would let
-/// somebody else choose what your credit line says. Scoping by user removes the shared name;
-/// <see cref="Sweep"/> keeps the directory from growing without bound.
+/// Files live under <see cref="ScratchPaths.Text"/>, which is per-user and owner-only. On a
+/// shared machine a directory anybody can write to is a path anybody can plant a file in, and
+/// since the fast path below trusts an existing file by name and length alone, that would let
+/// somebody else choose what your credit line says. Note the name is deliberately predictable —
+/// reuse between runs depends on it — so the protection is the directory's permissions, not its
+/// name. <see cref="Sweep"/> keeps it from growing without bound.
 /// </para>
 /// </summary>
 public static class TextResources
@@ -30,7 +32,7 @@ public static class TextResources
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        var directory = Directory.CreateDirectory(DirectoryPath()).FullName;
+        var directory = ScratchPaths.EnsureDirectory(DirectoryPath());
         var path = Path.Combine(directory, NameFor(text) + ".txt");
 
         // UTF-8 without a BOM: drawtext renders the byte order mark as a visible glyph.
@@ -112,9 +114,8 @@ public static class TextResources
         return removed;
     }
 
-    /// <summary>Where the text files live. Per-user, so the path is not shared or guessable.</summary>
-    public static string DirectoryPath() =>
-        Path.Combine(Path.GetTempPath(), $"reviewclips-{Environment.UserName}", "text");
+    /// <summary>Where the text files live. Per-user and owner-only; see <see cref="ScratchPaths"/>.</summary>
+    public static string DirectoryPath() => ScratchPaths.Text;
 
     /// <summary>The content-addressed file name, without extension.</summary>
     internal static string NameFor(string text)

@@ -9,11 +9,11 @@ namespace ReviewClips.Cli.Tests;
 /// <summary>
 /// The flag names <c>doctor</c> prints, checked against the flags that actually exist.
 /// <para>
-/// <c>doctor</c>'s optional-filter lines exist to name the option that stopped working. That makes
-/// the strings load-bearing, and nothing else verifies them: they are plain text sitting in a
-/// different assembly from the option definitions, so they drift silently. They had drifted —
-/// <c>--tone-map</c> for an option called <c>--tonemap</c>, and <c>--preset shorts</c> for what is
-/// <c>--profile shorts</c> — and both were being reproduced verbatim in the README.
+/// <c>doctor</c>'s optional-filter lines exist to name the option that stopped working, which
+/// makes the strings load-bearing. Nothing else verifies them: they are plain text in a different
+/// assembly from the option definitions, with no compiler relationship to the flags they quote, so
+/// they can drift without anything failing. A line naming a flag that does not exist is worse than
+/// no line at all, and the README quotes these lines verbatim.
 /// </para>
 /// </summary>
 public class DoctorFeatureTextTests
@@ -66,8 +66,9 @@ public class DoctorFeatureTextTests
     }
 
     /// <summary>
-    /// A flag can exist and still be quoted with a value it does not accept, which is how
-    /// "--preset shorts" survived: --preset is real, but shorts is a profile, not a preset.
+    /// A flag can exist and still be quoted with a value it does not accept, which the check
+    /// above cannot see. "--preset shorts" names a real flag: shorts is just a profile rather
+    /// than a preset.
     /// </summary>
     [Fact]
     public void ProfileNamesAreQuotedAgainstTheProfileFlag()
@@ -87,7 +88,7 @@ public class DoctorFeatureTextTests
         }
     }
 
-    /// <summary>The specific pair that was wrong, pinned so a revert is caught by name.</summary>
+    /// <summary>The exact spelling, checked by name rather than only by the general rule.</summary>
     [Fact]
     public void ToneMappingNamesTheTonemapOption()
     {
