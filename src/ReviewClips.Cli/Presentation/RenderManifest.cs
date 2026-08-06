@@ -64,6 +64,14 @@ internal sealed record RenderManifest
     [JsonPropertyName("sourceUsageFraction")]
     public double SourceUsageFraction { get; init; }
 
+    /// <summary>
+    /// The largest share taken from any single source, which is what the guardrail tests. This
+    /// is the figure that matters for an audit: the aggregate above is diluted by every source
+    /// the render barely touched.
+    /// </summary>
+    [JsonPropertyName("peakSourceUsageFraction")]
+    public double PeakSourceUsageFraction { get; init; }
+
     [JsonPropertyName("encoder")]
     public string Encoder { get; init; } = string.Empty;
 
@@ -92,15 +100,30 @@ internal sealed record RenderManifest
 
         var request = plan.Request;
 
-        var usage = plan.Segments
+        var clipsBySource = plan.Segments
             .GroupBy(s => s.SourcePath, StringComparer.Ordinal)
-            .Select(g => new SourceUsage
+            .ToDictionary(g => g.Key, g => (Clips: g.Count(), Seconds: g.Sum(s => s.Duration.TotalSeconds)), StringComparer.Ordinal);
+
+        // Driven from the usage report rather than from the segments, so the per-source rows and
+        // the guardrail are the same measurement. A source that contributed nothing still gets a
+        // row: "we supplied this and took none of it" is part of the record.
+        var usage = plan.SourceUsage.Sources
+            .Select(entry =>
             {
-                Source = g.Key,
-                Clips = g.Count(),
-                TotalSeconds = Math.Round(g.Sum(s => s.Duration.TotalSeconds), 3),
+                var counted = clipsBySource.GetValueOrDefault(entry.Path);
+
+                return new SourceUsage
+                {
+                    Source = entry.Path,
+                    Clips = counted.Clips,
+                    TotalSeconds = Math.Round(counted.Seconds, 3),
+                    DistinctSeconds = Math.Round(entry.Used.TotalSeconds, 3),
+                    AvailableSeconds = Math.Round(entry.Available.TotalSeconds, 3),
+                    Fraction = Math.Round(entry.Fraction, 5),
+                };
             })
-            .OrderByDescending(u => u.TotalSeconds)
+            .OrderByDescending(u => u.Fraction)
+            .ThenByDescending(u => u.TotalSeconds)
             .ToList();
 
         return new RenderManifest
@@ -113,6 +136,7 @@ internal sealed record RenderManifest
             DistinctSourceSeconds = Math.Round(plan.DistinctSourceDuration.TotalSeconds, 3),
             AvailableSourceSeconds = Math.Round(plan.SourceUsage.Available.TotalSeconds, 3),
             SourceUsageFraction = Math.Round(plan.SourceUsage.Fraction, 5),
+            PeakSourceUsageFraction = Math.Round(plan.SourceUsage.PeakFraction, 5),
             TargetSeconds = Math.Round(request.TargetDuration.TotalSeconds, 3),
             RenderedSeconds = Math.Round(plan.EffectiveDuration.TotalSeconds, 3),
             Encoder = plan.Encoder.VideoEncoder,
@@ -153,8 +177,21 @@ internal sealed record RenderManifest
         [JsonPropertyName("clips")]
         public int Clips { get; init; }
 
+        /// <summary>Screen time drawn from this source, counting every repeat.</summary>
         [JsonPropertyName("totalSeconds")]
         public double TotalSeconds { get; init; }
+
+        /// <summary>Union of the ranges referenced in this source, counting each moment once.</summary>
+        [JsonPropertyName("distinctSeconds")]
+        public double DistinctSeconds { get; init; }
+
+        /// <summary>This source's full runtime.</summary>
+        [JsonPropertyName("availableSeconds")]
+        public double AvailableSeconds { get; init; }
+
+        /// <summary><c>distinctSeconds / availableSeconds</c>: the share taken from this title.</summary>
+        [JsonPropertyName("fraction")]
+        public double Fraction { get; init; }
     }
 
     internal sealed record ManifestSegment

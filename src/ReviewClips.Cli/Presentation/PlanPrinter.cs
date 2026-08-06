@@ -43,13 +43,7 @@ internal static class PlanPrinter
                 : $"{distinct} distinct x ~{averageClip:0.#}s, "
                   + $"repeated to fill {slots} slots ({plan.RepeatFactor:0.#}x)");
 
-        var usage = plan.SourceUsage;
-
-        table.AddRow(
-            "Source used",
-            $"{usage.Used.TotalSeconds:0.#}s of footage"
-            + (usage.Available > TimeSpan.Zero ? $", {usage.Percent:0.#}% of the source" : string.Empty)
-            + (distinct == slots ? string.Empty : $" (vs {plan.TotalDuration.TotalSeconds:0.#}s of screen time)"));
+        table.AddRow("Source used", DescribeUsage(plan));
         table.AddRow("Strategy", $"{request.Selection.Strategy} (seed {plan.Seed})");
 
         // Only worth a row when the sources actually carry markers.
@@ -183,6 +177,34 @@ internal static class PlanPrinter
             + $"({excluded.TotalSeconds:0.#}s): {named}");
     }
 
+    /// <summary>
+    /// The source-usage row.
+    /// <para>
+    /// The percentage quoted is the peak across sources, matching what the guardrail tests, so
+    /// a warning can never cite a figure the summary did not show. With several sources the
+    /// heaviest is named, because an aggregate figure would be the one number that cannot
+    /// trigger anything.
+    /// </para>
+    /// </summary>
+    private static string DescribeUsage(RenderPlan plan)
+    {
+        var usage = plan.SourceUsage;
+        var screenTime = plan.DistinctClipCount == plan.Segments.Count
+            ? string.Empty
+            : $" (vs {plan.TotalDuration.TotalSeconds:0.#}s of screen time)";
+
+        if (usage.Peak is not { } peak || peak.Available <= TimeSpan.Zero)
+        {
+            return $"{usage.Used.TotalSeconds:0.#}s of footage{screenTime}";
+        }
+
+        var share = usage.Sources.Count > 1
+            ? $", peak {peak.Percent:0.#}% of {Markup.Escape(Path.GetFileName(peak.Path))}"
+            : $", {peak.Percent:0.#}% of the source";
+
+        return $"{usage.Used.TotalSeconds:0.#}s of footage{share}{screenTime}";
+    }
+
     private static string DescribeLook(LookOptions look)
     {
         var parts = new List<string>();
@@ -192,9 +214,17 @@ internal static class PlanPrinter
             parts.Add($"darken {look.Darken:0.##}");
         }
 
-        if (Math.Abs(look.Saturation - 1) > 0.001)
+        // Grayscale is reported instead of a saturation figure, not alongside one. Reading
+        // EffectiveSaturation is what keeps this honest: printing look.Saturation would name a
+        // number the filter graph overrode, and the summary is the only account of the render
+        // the user gets before it runs.
+        if (look.Grayscale)
         {
-            parts.Add($"saturation {look.Saturation:0.##}");
+            parts.Add("grayscale");
+        }
+        else if (Math.Abs(look.EffectiveSaturation - 1) > 0.001)
+        {
+            parts.Add($"saturation {look.EffectiveSaturation:0.##}");
         }
 
         if (Math.Abs(look.Contrast - 1) > 0.001)
@@ -205,11 +235,6 @@ internal static class PlanPrinter
         if (Math.Abs(look.Gamma - 1) > 0.001)
         {
             parts.Add($"gamma {look.Gamma:0.##}");
-        }
-
-        if (look.Grayscale)
-        {
-            parts.Add("grayscale");
         }
 
         if (look.Blur > 0.01)

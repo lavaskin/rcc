@@ -263,6 +263,102 @@ public class ExternalAudioTests
         arguments.ShouldContain("[aout]");
     }
 
+    // --- Fades --------------------------------------------------------------
+
+    [Fact]
+    public async Task FilterGraphStitcherFadesTheTrackWithThePicture()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var segments = await SegmentsAsync("graph_afade");
+        var request = Request(
+            segments,
+            _fixture.PathFor("graph_afade.mp4"),
+            TransitionKind.Fade,
+            AudioOptions.FromFile(_fixture.AudioTrack)) with
+        {
+            Transition = new TransitionOptions
+            {
+                Kind = TransitionKind.Fade,
+                Duration = TimeSpan.FromSeconds(0.4),
+                FadeIn = TimeSpan.FromSeconds(0.5),
+                FadeOut = TimeSpan.FromSeconds(0.5),
+            },
+        };
+
+        var arguments = string.Join(' ', Graph().DescribeArguments(request));
+
+        // A bed still at full volume over a picture fading to black is the most audible way for
+        // a render to sound unfinished, and the fades have to line up with the video's.
+        arguments.ShouldContain("afade=t=in:st=0:d=0.5");
+        arguments.ShouldContain("fade=t=in:st=0:d=0.5");
+
+        // Four 1.5s clips with three 0.4s crossfades: 4.8s, so the closing fade starts at 4.3s.
+        arguments.ShouldContain("afade=t=out:st=4.3:d=0.5");
+        arguments.ShouldContain("fade=t=out:st=4.3:d=0.5");
+
+        await Graph().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
+
+        (await _fixture.HasAudioStreamAsync(request.OutputPath)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task VolumeAndFadeAreCombinedIntoOneAudioFilterChain()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var segments = await SegmentsAsync("graph_vol_fade");
+        var request = Request(
+            segments,
+            _fixture.PathFor("graph_vol_fade.mp4"),
+            TransitionKind.None,
+            AudioOptions.FromFile(_fixture.AudioTrack) with { Volume = 0.5d }) with
+        {
+            Transition = new TransitionOptions
+            {
+                Kind = TransitionKind.None,
+                FadeIn = TimeSpan.FromSeconds(0.5),
+                FadeOut = TimeSpan.Zero,
+            },
+        };
+
+        var arguments = string.Join(' ', Graph().DescribeArguments(request));
+
+        // One -filter:a, not two. A second would silently replace the first.
+        arguments.Split("-filter:a").Length.ShouldBe(2);
+        arguments.ShouldContain("volume=0.5,afade=t=in:st=0:d=0.5");
+
+        await Graph().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
+
+        (await _fixture.HasAudioStreamAsync(request.OutputPath)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task NoFadesMeansNoAfade()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var segments = await SegmentsAsync("graph_nofade");
+        var request = Request(
+            segments,
+            _fixture.PathFor("graph_nofade.mp4"),
+            TransitionKind.Fade,
+            AudioOptions.FromFile(_fixture.AudioTrack)) with
+        {
+            // TransitionOptions defaults both fades to 0.5s, so they have to be turned off
+            // explicitly rather than merely left unmentioned.
+            Transition = new TransitionOptions
+            {
+                Kind = TransitionKind.Fade,
+                Duration = TimeSpan.FromSeconds(0.4),
+                FadeIn = TimeSpan.Zero,
+                FadeOut = TimeSpan.Zero,
+            },
+        };
+
+        string.Join(' ', Graph().DescribeArguments(request)).ShouldNotContain("afade");
+    }
+
     [Fact]
     public async Task BothStitchersAgreeOnTheResult()
     {

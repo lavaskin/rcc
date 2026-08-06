@@ -135,7 +135,8 @@ ok ffprobe  n8.1.2
  h264_nvenc           yes      --encoder nvenc
  ...
 each row was measured by encoding two frames, not by reading -encoders
-ok all 27 required filters present
+ok all 27 known filters present
+ok drawtext a default font resolves, so --attribution will render
 analysis cache: 18 entries, 3.1 MB in ~/.local/share/reviewclips/analysis
 Environment looks good.
 ```
@@ -144,9 +145,28 @@ The encoder rows are produced by the same probe encode the renderer uses to sele
 rather than by reading `ffmpeg -encoders`. This matters because NVENC is compiled into most FFmpeg
 builds and still fails at runtime without a suitable driver, or when every session is in use, so a
 list of compiled-in encoders does not answer the question. `doctor` reports what `generate` will
-really do.
+really do. The `drawtext` row works the same way: the filter being compiled in does not mean a font
+is installed for it to use, so a caption is actually drawn to find out.
 
-Exits `0` when the environment is usable and `4` when it is not.
+Filters are reported in two tiers. A filter a default render cannot avoid is fatal; one that only
+gates an opt-in flag is reported as a limitation, naming the flag it disables:
+
+```
+ok every filter a default render needs is present
+-- zscale missing, so HDR tone mapping (--tone-map) is unavailable
+-- drawtext missing, so burned-in credit lines (--attribution) is unavailable
+Environment is usable with the limitations noted above.
+```
+
+This distinction matters in practice: `zscale` needs libzimg, which Alpine and many minimal
+container images leave out, and `drawtext` needs libfreetype. Neither stops rcc rendering, so
+neither is treated as a broken environment.
+
+Exits `0` when the environment is usable — with or without limitations — and `4` when it is not.
+
+`--clear-cache` removes the cache entries and the stale burned-in text files, and nothing else.
+The cache directory is taken verbatim from `Cache:Directory`, so it deletes only the files it
+wrote rather than emptying whatever that path happens to point at.
 
 ---
 
@@ -286,7 +306,7 @@ Without it, HDR sources render washed out.
 | `--saturation <m>` | `0.80` | Saturation multiplier. |
 | `--contrast <m>` | `1.0` | Contrast multiplier. |
 | `--gamma <m>` | `1.0` | Gamma. Above 1 lifts the midtones, below 1 deepens them. |
-| `--grayscale` | off | Drops all colour. Shorthand for `--saturation 0`. |
+| `--grayscale` | off | Drops all colour. Equivalent to `--saturation 0`. |
 | `--blur <sigma>` | `0` | Gaussian blur. |
 | `--sharpen <0-3>` | `0` | Unsharp mask. Helps a soft upscale. |
 | `--pixelate <1.1-16>` | off | Chunky downscale-and-upscale. |
@@ -307,9 +327,18 @@ Darkening is multiplicative and anchored on the black level, so shadow detail is
 source material. The defaults reduce brightness and saturation so the footage sits behind
 narration and on-screen text rather than competing with it.
 
+Every on/off look option has a `--no-` counterpart — `--no-grayscale`, `--no-vignette`,
+`--no-mirror`, `--no-flip` — so a profile that switches one on can be switched back off from the
+command line. A bare flag can only say "on", which would otherwise make a profile's choice
+permanent. Giving both forms of the same option is refused rather than silently resolved.
+
+`--grayscale` and `--saturation` set the same thing, so passing `--saturation` explicitly wins;
+the plan summary reports whichever one is actually applied.
+
 `--fade-edges` is not the same thing as `--transition`. A transition overlaps two neighbouring
 clips and forces the filter-graph stitcher; `--fade-edges` applies within each clip during
-extraction, so `--transition none` still joins the result by stream copy.
+extraction, so `--transition none` still joins the result by stream copy. It is applied at both
+ends of every clip, so it may be at most half of `--splice`.
 
 `--attribution` takes arbitrary text. Titles containing `:`, `'`, `%`, `,` or brackets are handled
 correctly:
@@ -382,6 +411,10 @@ built to the length of the track rather than trimmed to it. It cannot be combine
 With an external track the per-clip source audio is not extracted at all, and muxing does not cost
 a video re-encode: `--transition none` remains a stream copy.
 
+`--fade-in` and `--fade-out` fade the audio on exactly the same schedule as the picture, so a bed
+does not carry on at full volume over a frame fading to black. If the track runs out before the
+video does, `-shortest` ends the file there and the closing fade goes with it.
+
 ### Analysis
 
 | Option | Default | Description |
@@ -401,7 +434,12 @@ a video re-encode: `--transition none` remains a stream copy.
 
 The manifest records the seed, strategy, encoder, per-source usage, and every clip's start and
 duration. `distinctSourceSeconds` is the union of referenced ranges, so repeats and overlaps count
-once; `sourceUsageFraction` expresses it as a share of `availableSourceSeconds`.
+once; `sourceUsageFraction` expresses it as a share of `availableSourceSeconds`, and
+`peakSourceUsageFraction` gives the largest share taken from any single source, which is the figure
+the guardrail tests. Each entry in `sourceUsage` carries the same breakdown for one title:
+`totalSeconds` is screen time including repeats, `distinctSeconds` the union, and `fraction` the
+share of that title's `availableSeconds`. Sources that were supplied but never drawn from appear
+with a fraction of zero, since "we had this and took none of it" is part of the record.
 
 ### Limiting source footage used
 
@@ -434,11 +472,11 @@ With `--cues`, the cap limits how many cues are used and each cue produces a ful
 
 #### The source-usage guardrail
 
-Every plan reports the share of the supplied footage it consumes, and warns above a threshold:
+Every plan reports the share of each source it consumes, and warns above a threshold:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--max-source-percent <0-100>` | `10` | Warn above this share of the source. `0` disables. |
+| `--max-source-percent <0-100>` | `10` | Warn above this share of any one source. `0` disables. |
 | `--strict-source-limit` | off | Fail instead of warning. |
 
 ```
@@ -451,11 +489,25 @@ render of 15 slots built from 3 clips occupies 65.6s of screen time but touches 
 film. Counting slots would overstate consumption more than fourfold and would refuse renders that
 in fact use a twentieth of a feature. Overlapping clips are likewise counted once.
 
+The limit applies **per source, not to the pool**. With several inputs the heaviest is the one
+reported and the one tested:
+
+```
+Source used | 41.2s of footage, peak 62.1% of heat.mkv (vs 90s of screen time)
+```
+
+Measuring the pool instead would let the check be defeated by supplying footage the render never
+touches — 80% of one film averaged against nine untouched hours reports 8%. It is also simply the
+honest reading of the question: the concern is how much of *a work* was used, and a stack of
+separate works has no combined runtime that means anything. With a single source, which is the
+common case, the two are identical.
+
 The default is to warn rather than fail. A hard limit at 10% refuses an entirely ordinary short
 render — a 30-second background track cut from a three-minute source is 16.7% — so the exposure is
 surfaced without breaking the common case. `--strict-source-limit` opts into refusal and exits `2`.
 
-The three ways to lower the figure are `--max-clips`, a shorter `--duration`, and more sources.
+The three ways to lower the figure are `--max-clips`, a shorter `--duration`, and more sources —
+though more sources only helps if the render actually draws on them.
 
 Bounding source usage is also relevant to fair use, though a small proportion is not a safe harbour
 and this is not legal advice; see [LEGAL.md](LEGAL.md).
@@ -545,6 +597,8 @@ Settings are read from, in increasing precedence:
 
 A profile may set any of the format, look, cadence, transition, selection and encoding fields;
 anything it leaves out keeps the built-in default, and an explicit command-line option always wins.
+For the on/off look options that means the `--no-` form: a profile setting `"Grayscale": true` is
+turned off with `--no-grayscale`, since a bare `--grayscale` can only say "on".
 
 The analysis cache defaults to `~/.local/share/reviewclips/analysis`. `rcc doctor --cache` reports
 its size, and `rcc doctor --clear-cache` empties it. Entries are keyed on file
@@ -758,17 +812,30 @@ height, frame rate and pixel format are all non-nullable — and `PlanAsync` dis
 reporting zero duration, so an audio-only file cannot go through `ProbeAsync` at all. Reading the
 container duration with `-show_format` alone is what `--match-audio` needs and all it needs.
 
-**The source-usage guardrail measures the distinct union, not total footage.** `DistinctSourceDuration`
-is the union of the referenced source ranges, so repeats and overlaps count once. Multiplying
-splice count by splice length is easier and wrong: with `--max-clips` repeating a pool it
-overstates consumption several-fold, and a strict limit computed that way refuses renders that
-touch a twentieth of a feature. The guardrail warns by default rather than failing, because a hard
-limit at 10% would refuse a 30-second render cut from a three-minute source.
+**The source-usage guardrail measures the distinct union per source, not total footage.** The union
+of the referenced ranges counts repeats and overlaps once. Multiplying splice count by splice
+length is easier and wrong: with `--max-clips` repeating a pool it overstates consumption
+several-fold, and a strict limit computed that way refuses renders that touch a twentieth of a
+feature. The limit is tested against the largest share taken from any one source rather than
+against the pool, because an aggregate can be diluted to nothing by adding footage the render never
+touches, and because the question the guardrail exists to answer is about a work rather than about
+a collection. The guardrail warns by default rather than failing, since a hard limit at 10% would
+refuse a 30-second render cut from a three-minute source.
 
 **`doctor` shares the encoder probe with the selector.** Both go through `IEncoderProbe`, which
 decides usability by encoding two frames and caching the verdict. Reading `ffmpeg -encoders`
 instead would report NVENC as available on any machine whose FFmpeg was built with it, including
 those with no GPU, and the diagnostic would then disagree with the renderer it exists to describe.
+The `drawtext` check works the same way, and for a sharper reason: rcc deliberately pins no
+`fontfile` so captions match the system font, which means the filter can be compiled in and still
+fail on an image that has libfreetype and no fonts.
+
+**`doctor` reports filters in two tiers.** A filter a default render cannot avoid is fatal; one
+that only gates an opt-in flag is a limitation named against that flag. Treating them alike meant
+an FFmpeg built without libzimg — the common case on Alpine and on minimal container images —
+reported itself unusable despite rendering every SDR job perfectly, which sends people chasing a
+rebuild they do not need. The same reasoning already applied to encoders, where only `libx264` is
+required.
 
 **Clips are normalized at extraction.** Identical geometry, frame rate, pixel format, GOP, and
 timebase are what permit the stream-copy stitch path. Anamorphic sources are corrected to square

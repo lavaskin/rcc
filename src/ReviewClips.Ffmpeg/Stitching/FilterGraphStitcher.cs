@@ -100,9 +100,24 @@ public sealed class FilterGraphStitcher : IStitcher
             arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
             arguments.AddRange(["-ac", "2"]);
 
+            // A simple -filter:a rather than a filter_complex branch: the track is mapped
+            // straight from an input and never meets the segment graph, so it needs no labels.
+            var audioFilters = new List<string>(3);
+
             if (audio.AltersVolume)
             {
-                arguments.AddRange(["-filter:a", $"volume={Number(audio.Volume)}"]);
+                audioFilters.Add($"volume={Number(audio.Volume)}");
+            }
+
+            // Matched to the video fades so the bed does not carry on at full volume over a
+            // picture fading to black. Timed against the video, which is what the fades were
+            // computed from; if -shortest ends the file early because the track ran out first,
+            // the closing fade is truncated with it.
+            audioFilters.AddRange(plan.AudioFadeFilters());
+
+            if (audioFilters.Count > 0)
+            {
+                arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
             }
 
             // Stops a track longer than the render from padding the output with still video.
@@ -181,6 +196,53 @@ public sealed record StitchPlan
         }
     }
 
+    /// <summary>The opening fade, after clamping. Zero when there is none.</summary>
+    public TimeSpan FadeInDuration => ClampFade(_transition.FadeIn, TotalDuration);
+
+    /// <summary>The closing fade, after clamping. Zero when there is none.</summary>
+    public TimeSpan FadeOutDuration => ClampFade(_transition.FadeOut, TotalDuration);
+
+    /// <summary>When the closing fade begins.</summary>
+    public TimeSpan FadeOutStart
+    {
+        get
+        {
+            var start = TotalDuration - FadeOutDuration;
+            return start > TimeSpan.Zero ? start : TimeSpan.Zero;
+        }
+    }
+
+    /// <summary>
+    /// True when the render fades at either end.
+    /// <para>
+    /// Exposed so the audio can be faded on exactly the same schedule. A picture that fades to
+    /// black under a soundtrack still playing at full volume, then stops dead, is the single
+    /// most obvious way for a render to sound unfinished — and it is far more noticeable under
+    /// a music bed than under a clip's own incidental audio.
+    /// </para>
+    /// </summary>
+    public bool HasFades => FadeInDuration > TimeSpan.Zero || FadeOutDuration > TimeSpan.Zero;
+
+    /// <summary>
+    /// The <c>afade</c> filters matching the video fades, or an empty list when there are none.
+    /// </summary>
+    public IReadOnlyList<string> AudioFadeFilters()
+    {
+        var filters = new List<string>(2);
+
+        if (FadeInDuration > TimeSpan.Zero)
+        {
+            filters.Add($"afade=t=in:st=0:d={Seconds(FadeInDuration)}");
+        }
+
+        if (FadeOutDuration > TimeSpan.Zero)
+        {
+            filters.Add($"afade=t=out:st={Seconds(FadeOutStart)}:d={Seconds(FadeOutDuration)}");
+        }
+
+        return filters;
+    }
+
     public static StitchPlan Create(StitchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -247,9 +309,7 @@ public sealed record StitchPlan
 
     private void BuildVideoChains(List<string> chains)
     {
-        var fadeIn = _transition.FadeIn;
-        var fadeOut = _transition.FadeOut;
-        var needsFades = fadeIn > TimeSpan.Zero || fadeOut > TimeSpan.Zero;
+        var needsFades = HasFades;
 
         string joined;
 
@@ -289,20 +349,15 @@ public sealed record StitchPlan
         }
 
         var filters = new List<string>(2);
-        var total = TotalDuration;
 
-        if (fadeIn > TimeSpan.Zero)
+        if (FadeInDuration > TimeSpan.Zero)
         {
-            filters.Add($"fade=t=in:st=0:d={Seconds(ClampFade(fadeIn, total))}");
+            filters.Add($"fade=t=in:st=0:d={Seconds(FadeInDuration)}");
         }
 
-        if (fadeOut > TimeSpan.Zero)
+        if (FadeOutDuration > TimeSpan.Zero)
         {
-            var duration = ClampFade(fadeOut, total);
-            var start = total - duration;
-            filters.Add(
-                $"fade=t=out:st={Seconds(start > TimeSpan.Zero ? start : TimeSpan.Zero)}"
-                + $":d={Seconds(duration)}");
+            filters.Add($"fade=t=out:st={Seconds(FadeOutStart)}:d={Seconds(FadeOutDuration)}");
         }
 
         chains.Add($"[{joined}]{string.Join(',', filters)}[{VideoOutputLabel}]");
@@ -310,9 +365,15 @@ public sealed record StitchPlan
 
     private void BuildAudioChains(List<string> chains)
     {
+        // The tail filter is where the whole-render fades land, so the audio ends on the same
+        // schedule as the picture. anull when there are none, keeping the chain shape identical
+        // either way.
+        var fades = AudioFadeFilters();
+        var tail = fades.Count > 0 ? string.Join(',', fades) : "anull";
+
         if (_durations.Count == 1)
         {
-            chains.Add($"[0:a]anull[{AudioOutputLabel}]");
+            chains.Add($"[0:a]{tail}[{AudioOutputLabel}]");
             return;
         }
 
@@ -328,12 +389,19 @@ public sealed record StitchPlan
                 current = next;
             }
 
-            chains.Add($"[{current}]anull[{AudioOutputLabel}]");
+            chains.Add($"[{current}]{tail}[{AudioOutputLabel}]");
             return;
         }
 
         var inputs = string.Concat(Enumerable.Range(0, _durations.Count).Select(i => $"[{i}:a]"));
-        chains.Add($"{inputs}concat=n={_durations.Count}:v=0:a=1[{AudioOutputLabel}]");
+        var joined = fades.Count > 0 ? "ca" : AudioOutputLabel;
+
+        chains.Add($"{inputs}concat=n={_durations.Count}:v=0:a=1[{joined}]");
+
+        if (fades.Count > 0)
+        {
+            chains.Add($"[{joined}]{tail}[{AudioOutputLabel}]");
+        }
     }
 
     private static TimeSpan ClampFade(TimeSpan fade, TimeSpan total)

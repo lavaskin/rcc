@@ -106,8 +106,15 @@ public sealed record LookOptions
 
     /// <summary>
     /// Saturation as the filter should apply it. <see cref="Grayscale"/> wins over
-    /// <see cref="Saturation"/>: it is the more specific request, and the two are only ever set
-    /// together by a profile supplying a default that the user then overrode.
+    /// <see cref="Saturation"/>, being the more specific request.
+    /// <para>
+    /// This is a last-resort tie-break, not the place the conflict is meant to be settled. A
+    /// caller that knows the user's intent resolves it first — the CLI clears
+    /// <see cref="Grayscale"/> when <c>--saturation</c> is typed explicitly, so a resolved
+    /// <see cref="LookOptions"/> arriving from there never holds both. Anything reporting on
+    /// these options must read this rather than <see cref="Saturation"/>, or it will describe a
+    /// value the filter graph does not apply.
+    /// </para>
     /// </summary>
     public double EffectiveSaturation => Grayscale ? 0d : Saturation;
 

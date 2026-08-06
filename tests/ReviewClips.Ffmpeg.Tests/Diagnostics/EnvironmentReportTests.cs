@@ -109,3 +109,156 @@ public class VersionParserTests
         EnvironmentInspector.ParseVersion("ffmpeg version 7.1 Copyright\nconfiguration: --version 9.9")
             .ShouldBe("7.1");
 }
+
+/// <summary>
+/// What <c>rcc doctor</c> concludes from a given set of findings.
+/// <para>
+/// Built from synthetic records rather than from a real inspection, because the interesting
+/// cases are precisely the ones the developer's own machine cannot produce: an FFmpeg without
+/// libzimg, or with no font installed. Those are common in containers, and getting the verdict
+/// wrong on them means telling someone their working install is broken.
+/// </para>
+/// </summary>
+public class EnvironmentVerdictTests
+{
+    private static ToolStatus Working(string name) => new()
+    {
+        Name = name,
+        Path = $"/usr/bin/{name}",
+        Available = true,
+        Version = "n8.1.2",
+    };
+
+    private static EnvironmentReport Report(
+        bool ffmpeg = true,
+        bool x264 = true,
+        IReadOnlyList<string>? missingRequired = null,
+        IReadOnlyList<MissingFeature>? missingOptional = null,
+        bool textUsable = true) => new()
+        {
+            Ffmpeg = ffmpeg
+                ? Working("ffmpeg")
+                : new ToolStatus
+                {
+                    Name = "ffmpeg",
+                    Path = "ffmpeg",
+                    Available = false,
+                    Error = "not found",
+                },
+            Ffprobe = Working("ffprobe"),
+            Encoders =
+            [
+                new EncoderStatus
+                {
+                    Name = "libx264",
+                    Usable = x264,
+                    SelectedBy = "--encoder x264",
+                    Required = true,
+                },
+                new EncoderStatus
+                {
+                    Name = "h264_nvenc",
+                    Usable = false,
+                    SelectedBy = "--encoder nvenc",
+                    Required = false,
+                },
+            ],
+            Filters = new FilterStatus
+            {
+                Present = ["scale"],
+                Missing = missingRequired ?? [],
+                MissingOptional = missingOptional ?? [],
+            },
+            Text = new TextRenderStatus
+            {
+                FilterPresent = true,
+                Usable = textUsable,
+                Error = textUsable ? null : "Cannot find a valid font",
+            },
+            Cache = new CacheStatus
+            {
+                Directory = "/tmp/cache",
+                Exists = false,
+                Entries = 0,
+                SizeBytes = 0,
+            },
+        };
+
+    [Fact]
+    public void AHealthyMachineIsUsableWithNoLimitations()
+    {
+        var report = Report();
+
+        report.IsUsable.ShouldBeTrue();
+        report.HasLimitations.ShouldBeFalse();
+        report.Filters.AllPresent.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AMissingOptionalFilterIsALimitationNotAFailure()
+    {
+        // The case that matters: libzimg is absent on Alpine and on plenty of static builds.
+        // Every SDR render still works, so the verdict must not be "broken".
+        var report = Report(missingOptional:
+        [
+            new MissingFeature { Filter = "zscale", Feature = "HDR tone mapping (--tone-map)" },
+        ]);
+
+        report.IsUsable.ShouldBeTrue();
+        report.HasLimitations.ShouldBeTrue();
+        report.Filters.RequiredPresent.ShouldBeTrue();
+        report.Filters.AllPresent.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AMissingRequiredFilterIsAFailure()
+    {
+        var report = Report(missingRequired: ["scale"]);
+
+        report.IsUsable.ShouldBeFalse();
+        report.Filters.RequiredPresent.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AnUnusableFontIsALimitationNotAFailure()
+    {
+        // drawtext compiled in, no font installed. Only --attribution stops working.
+        var report = Report(textUsable: false);
+
+        report.IsUsable.ShouldBeTrue();
+        report.HasLimitations.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AMissingRequiredEncoderIsAFailure()
+    {
+        var report = Report(x264: false);
+
+        report.IsUsable.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// h264_nvenc is unusable in every report built here; a machine without a GPU is not a
+    /// broken machine.
+    /// </summary>
+    [Fact]
+    public void AnUnusableOptionalEncoderIsNotAFailure() =>
+        Report().IsUsable.ShouldBeTrue();
+
+    [Fact]
+    public void AMissingBinaryIsAFailure() =>
+        Report(ffmpeg: false).IsUsable.ShouldBeFalse();
+
+    [Fact]
+    public void LimitationsAreOnlyReportedForAnOtherwiseUsableMachine()
+    {
+        // Otherwise doctor would print "usable, with limitations" over the top of a fatal row.
+        var report = Report(ffmpeg: false, missingOptional:
+        [
+            new MissingFeature { Filter = "zscale", Feature = "HDR tone mapping (--tone-map)" },
+        ]);
+
+        report.IsUsable.ShouldBeFalse();
+        report.HasLimitations.ShouldBeFalse();
+    }
+}

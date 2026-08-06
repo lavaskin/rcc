@@ -148,6 +148,10 @@ public class FilterGraphExecutionTests
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
 
+        // zscale needs libzimg, which plenty of builds leave out. Absent it, there is nothing
+        // to assert about tone mapping here and a failure would say the wrong thing.
+        Assert.SkipUnless(_fixture.HasFilter("zscale"), "This FFmpeg has no zscale (libzimg).");
+
         // The zscale/tonemap chain depends on optional FFmpeg components, so executing it is
         // the only way to know the local build supports it.
         await RenderAsync(
@@ -297,6 +301,7 @@ public class FilterGraphExecutionTests
     public async Task Attribution_SurvivesTitlesFullOfFilterSyntax(string text)
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+        Assert.SkipUnless(_fixture.FontAvailable, "drawtext cannot resolve a font here.");
 
         // Every one of these contains a character that is structural in FFmpeg's filter
         // grammar. Inlining any of them into text= terminates the argument early and fails the
@@ -317,6 +322,7 @@ public class FilterGraphExecutionTests
     public async Task Attribution_ProducesAValidGraphAtEveryPosition(TextPosition position)
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+        Assert.SkipUnless(_fixture.FontAvailable, "drawtext cannot resolve a font here.");
 
         await RenderAsync(
             _fixture.SimpleClip,
@@ -330,6 +336,7 @@ public class FilterGraphExecutionTests
     public async Task Attribution_ActuallyMarksThePixels()
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+        Assert.SkipUnless(_fixture.FontAvailable, "drawtext cannot resolve a font here.");
 
         // Drawn over a black frame, so any non-black pixel is the text itself. A graph can be
         // accepted by FFmpeg and still draw nothing, e.g. if the font cannot be resolved.

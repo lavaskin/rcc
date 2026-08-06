@@ -2,6 +2,7 @@ using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using ReviewClips.Cli.Presentation;
 using ReviewClips.Ffmpeg.Diagnostics;
+using ReviewClips.Ffmpeg.Filters;
 using Spectre.Console;
 
 namespace ReviewClips.Cli.Commands;
@@ -53,6 +54,16 @@ internal sealed class DoctorCommand
                 ? $"[green]cleared[/] {cleared.Entries} cache entr{(cleared.Entries == 1 ? "y" : "ies")} "
                   + Styles.Faint($"({GenerateCommand.FormatSize(cleared.SizeBytes)}) from {Markup.Escape(cleared.Directory)}")
                 : $"{Styles.Faint("cache was already empty:")} {Markup.Escape(cleared.Directory)}");
+
+            // The attribution text files are the other thing rcc leaves on disk between runs.
+            // Nothing else ever removes them, and this is the command that exists to tidy up.
+            var swept = TextResources.Sweep();
+            if (swept > 0)
+            {
+                console.MarkupLine(
+                    $"[green]cleared[/] {swept} stale attribution text file(s) "
+                    + Styles.Faint($"from {Markup.Escape(TextResources.DirectoryPath())}"));
+            }
         }
 
         if (parse.GetValue(_cacheOnly))
@@ -77,18 +88,30 @@ internal sealed class DoctorCommand
 
         PrintEncoders(console, report);
         PrintFilters(console, report);
+        PrintText(console, report.Text);
         PrintCache(console, report.Cache);
 
-        if (report.IsUsable)
+        if (!report.IsUsable)
         {
-            console.MarkupLine("[green]Environment looks good.[/]");
+            console.MarkupLine(
+                "[red]Environment is not usable[/] "
+                + Styles.Faint("see the rows marked no above."));
+            return ExitCodes.ToolFailure;
+        }
+
+        if (report.HasLimitations)
+        {
+            // Success, not failure. Everything a default render needs is here; some opt-in
+            // flags are not available. Exiting non-zero would make an ordinary minimal FFmpeg
+            // install look broken and send people chasing a rebuild they do not need.
+            console.MarkupLine(
+                "[green]Environment is usable[/] "
+                + Styles.Faint("with the limitations noted above."));
             return ExitCodes.Success;
         }
 
-        console.MarkupLine(
-            "[yellow]Environment is incomplete[/] "
-            + Styles.Faint("see the rows marked no above."));
-        return ExitCodes.ToolFailure;
+        console.MarkupLine("[green]Environment looks good.[/]");
+        return ExitCodes.Success;
     }
 
     private static void PrintTools(IAnsiConsole console, EnvironmentReport report)
@@ -140,13 +163,53 @@ internal sealed class DoctorCommand
 
         if (filters.AllPresent)
         {
-            console.MarkupLine($"[green]ok[/] all {filters.Present.Count} required filters present");
+            console.MarkupLine($"[green]ok[/] all {filters.Present.Count} known filters present");
+            return;
+        }
+
+        if (!filters.RequiredPresent)
+        {
+            console.MarkupLine(
+                $"[red]no[/] {filters.Missing.Count} required filter(s) missing: "
+                + Markup.Escape(string.Join(", ", filters.Missing)));
+        }
+        else
+        {
+            console.MarkupLine("[green]ok[/] every filter a default render needs is present");
+        }
+
+        // Reported as limitations rather than errors: each names the flag it disables, so the
+        // line is actionable without implying the install is broken.
+        foreach (var missing in filters.MissingOptional)
+        {
+            console.MarkupLine(
+                $"[yellow]--[/] {Markup.Escape(missing.Filter)} "
+                + Styles.Faint($"missing, so {Markup.Escape(missing.Feature)} is unavailable"));
+        }
+    }
+
+    private static void PrintText(IAnsiConsole console, TextRenderStatus text)
+    {
+        if (text.Usable)
+        {
+            console.MarkupLine(
+                "[green]ok[/] drawtext "
+                + Styles.Faint("a default font resolves, so --attribution will render"));
+            return;
+        }
+
+        if (!text.FilterPresent)
+        {
+            // Already covered by the optional-filter line above; saying it twice adds nothing.
             return;
         }
 
         console.MarkupLine(
-            $"[red]no[/] {filters.Missing.Count} required filter(s) missing: "
-            + Markup.Escape(string.Join(", ", filters.Missing)));
+            "[yellow]--[/] drawtext is present but could not draw: "
+            + Markup.Escape(text.Error ?? "unknown error"));
+        console.MarkupLine(
+            Styles.Faint("  --attribution will fail; install a font package such as "
+                + "fonts-dejavu-core"));
     }
 
     private static void PrintCache(IAnsiConsole console, CacheStatus cache)

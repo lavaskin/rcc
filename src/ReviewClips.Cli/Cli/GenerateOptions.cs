@@ -210,7 +210,13 @@ internal sealed class GenerateOptions
 
     public Option<bool> Grayscale { get; } = new("--grayscale")
     {
-        Description = "Drop all colour. Shorthand for --saturation 0.",
+        Description = "Drop all colour. Equivalent to --saturation 0; passing --saturation "
+            + "explicitly overrides it.",
+    };
+
+    public Option<bool> NoGrayscale { get; } = new("--no-grayscale")
+    {
+        Description = "Keep colour, overriding a profile that drops it.",
     };
 
     public Option<double?> Sharpen { get; } = new("--sharpen")
@@ -235,14 +241,29 @@ internal sealed class GenerateOptions
         Description = "Darken the frame corners.",
     };
 
+    public Option<bool> NoVignette { get; } = new("--no-vignette")
+    {
+        Description = "Leave the frame corners alone, overriding a profile that darkens them.",
+    };
+
     public Option<bool> Mirror { get; } = new("--mirror")
     {
         Description = "Horizontally mirror every clip.",
     };
 
+    public Option<bool> NoMirror { get; } = new("--no-mirror")
+    {
+        Description = "Do not mirror, overriding a profile that does.",
+    };
+
     public Option<bool> FlipVertical { get; } = new("--flip")
     {
         Description = "Vertically flip every clip.",
+    };
+
+    public Option<bool> NoFlipVertical { get; } = new("--no-flip")
+    {
+        Description = "Do not flip, overriding a profile that does.",
     };
 
     public Option<string?> Attribution { get; } = new("--attribution")
@@ -458,12 +479,16 @@ internal sealed class GenerateOptions
         yield return Grain;
         yield return Gamma;
         yield return Grayscale;
+        yield return NoGrayscale;
         yield return Sharpen;
         yield return Pixelate;
         yield return FadeEdges;
         yield return Vignette;
+        yield return NoVignette;
         yield return Mirror;
+        yield return NoMirror;
         yield return FlipVertical;
+        yield return NoFlipVertical;
         yield return Attribution;
         yield return AttributionPosition;
         yield return Zoom;

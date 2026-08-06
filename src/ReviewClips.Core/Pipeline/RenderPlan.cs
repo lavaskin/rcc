@@ -37,7 +37,7 @@ public sealed record RenderPlan
     /// </summary>
     public Planning.SourceUsageReport SourceUsage => Planning.SourceUsageGuard.Evaluate(
         Segments,
-        Sources.Select(s => s.Info.Duration),
+        Sources.Select(s => (s.Info.Path, s.Info.Duration)),
         Request.MaxSourceFraction);
 
     /// <summary>How many times the average clip appears. 1.0 means no repetition.</summary>

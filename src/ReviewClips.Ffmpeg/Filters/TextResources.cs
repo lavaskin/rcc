@@ -12,26 +12,38 @@ namespace ReviewClips.Ffmpeg.Filters;
 /// via a unique temporary name and are then moved into place, so a reader can never observe a
 /// half-written file.
 /// </para>
+/// <para>
+/// Files live under a per-user directory rather than directly in the system temp directory.
+/// On a shared machine <c>/tmp/reviewclips/text</c> is a path anybody can predict and create
+/// first, and since the fast path below trusts an existing file by name alone, that would let
+/// somebody else choose what your credit line says. Scoping by user removes the shared name;
+/// <see cref="Sweep"/> keeps the directory from growing without bound.
+/// </para>
 /// </summary>
 public static class TextResources
 {
+    /// <summary>How long an unused text file survives a <see cref="Sweep"/>.</summary>
+    private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
+
     /// <summary>Writes <paramref name="text"/> to a content-addressed file and returns its path.</summary>
     public static string Materialise(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        var directory = Path.Combine(Path.GetTempPath(), "reviewclips", "text");
-        Directory.CreateDirectory(directory);
-
+        var directory = Directory.CreateDirectory(DirectoryPath()).FullName;
         var path = Path.Combine(directory, NameFor(text) + ".txt");
 
-        if (File.Exists(path))
+        // UTF-8 without a BOM: drawtext renders the byte order mark as a visible glyph.
+        var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
+
+        // Length is the cheap half of the content check, and it catches the case the bare
+        // File.Exists misses: a run killed mid-write, or a disk that filled, leaving a
+        // truncated file that this would otherwise reuse silently for ever.
+        if (IsIntact(path, bytes.Length))
         {
             return path;
         }
 
-        // UTF-8 without a BOM: drawtext renders the byte order mark as a visible glyph.
-        var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
         var staging = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
 
         try
@@ -39,7 +51,7 @@ public static class TextResources
             File.WriteAllBytes(staging, bytes);
             File.Move(staging, path, overwrite: true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Another process won the race and wrote identical content, which is the only thing
             // it could have written given the name is a hash of it.
@@ -49,11 +61,81 @@ public static class TextResources
         return path;
     }
 
+    /// <summary>
+    /// Deletes text files not touched for <see cref="MaxAge"/>.
+    /// <para>
+    /// These are tiny, but nothing else ever removes them: unlike the pipeline's working
+    /// directory they outlive the render on purpose, so that the next one reuses them. Age is
+    /// the only safe criterion, since a file in use by a concurrent render looks exactly like
+    /// one left behind by a finished one.
+    /// </para>
+    /// </summary>
+    public static int Sweep()
+    {
+        var directory = DirectoryPath();
+
+        if (!Directory.Exists(directory))
+        {
+            return 0;
+        }
+
+        var cutoff = DateTime.UtcNow - MaxAge;
+        var removed = 0;
+
+        foreach (var file in SafeEnumerate(directory))
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(file) < cutoff)
+                {
+                    File.Delete(file);
+                    removed++;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Being unable to tidy up is never worth surfacing, let alone failing over.
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>Where the text files live. Per-user, so the path is not shared or guessable.</summary>
+    public static string DirectoryPath() =>
+        Path.Combine(Path.GetTempPath(), $"reviewclips-{Environment.UserName}", "text");
+
     /// <summary>The content-addressed file name, without extension.</summary>
     internal static string NameFor(string text)
     {
+        // Fully qualified: this project has its own Encoding namespace, which shadows System.Text.
         var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text));
         return Convert.ToHexStringLower(hash)[..16];
+    }
+
+    private static bool IsIntact(string path, int expectedBytes)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists && info.Length == expectedBytes;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static IEnumerable<string> SafeEnumerate(string directory)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 
     private static void TryDelete(string path)
@@ -62,7 +144,7 @@ public static class TextResources
         {
             File.Delete(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // A stray temp file in the temp directory is not worth failing a render over.
         }

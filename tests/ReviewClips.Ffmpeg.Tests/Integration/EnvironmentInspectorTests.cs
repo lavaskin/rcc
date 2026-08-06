@@ -60,11 +60,53 @@ public class EnvironmentInspectorTests
 
         var report = await Inspector().InspectAsync(TestContext.Current.CancellationToken);
 
-        // FilterGraphExecutionTests runs these graphs for real against the same binary, so a
-        // filter reported missing here would have to have failed there first.
+        // Only the required tier is asserted unconditionally. Any build that can run this suite
+        // at all has these, and FilterGraphExecutionTests exercises them for real against the
+        // same binary, so a filter reported missing here would have failed there first.
         report.Filters.Missing.ShouldBeEmpty();
+        report.Filters.Present.ShouldContain("scale");
         report.Filters.Present.ShouldContain("lutyuv");
-        report.Filters.Present.ShouldContain("zscale");
+    }
+
+    [Fact]
+    public async Task ReportsAnOptionalFilterAgainstTheFeatureItGates()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var report = await Inspector().InspectAsync(TestContext.Current.CancellationToken);
+
+        // Whichever way this build went, the report has to place zscale in exactly one tier —
+        // and never in the fatal one, because a build without libzimg still renders SDR.
+        report.Filters.Missing.ShouldNotContain("zscale");
+
+        if (_fixture.HasFilter("zscale"))
+        {
+            report.Filters.Present.ShouldContain("zscale");
+            report.Filters.MissingOptional.ShouldNotContain(f => f.Filter == "zscale");
+        }
+        else
+        {
+            var gap = report.Filters.MissingOptional.SingleOrDefault(f => f.Filter == "zscale");
+
+            gap.ShouldNotBeNull();
+            gap.Feature.ShouldContain("--tone-map");
+        }
+    }
+
+    [Fact]
+    public async Task ReportsWhetherCaptionsCanActuallyBeDrawn()
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var report = await Inspector().InspectAsync(TestContext.Current.CancellationToken);
+
+        // The point of the check: drawtext being compiled in does not mean a font resolves.
+        report.Text.Usable.ShouldBe(_fixture.FontAvailable);
+
+        if (!report.Text.Usable)
+        {
+            report.Text.Error.ShouldNotBeNullOrWhiteSpace();
+        }
     }
 
     [Fact]
@@ -74,6 +116,9 @@ public class EnvironmentInspectorTests
 
         var report = await Inspector().InspectAsync(TestContext.Current.CancellationToken);
 
+        // Unconditional on purpose. Any FFmpeg complete enough to have produced this fixture's
+        // media is one rcc can render with, whatever optional pieces it was built without —
+        // and if a stripped-down build reported itself unusable here, that would be the bug.
         report.IsUsable.ShouldBeTrue();
     }
 
@@ -109,7 +154,7 @@ public class EnvironmentInspectorTests
     }
 
     [Fact]
-    public async Task ClearCacheRemovesTheDirectoryAndReportsWhatWent()
+    public async Task ClearCacheRemovesTheEntriesAndReportsWhatWent()
     {
         var directory = _fixture.PathFor("cache_to_clear");
         Directory.CreateDirectory(directory);
@@ -123,10 +168,67 @@ public class EnvironmentInspectorTests
 
         cleared.Exists.ShouldBeTrue();
         cleared.Entries.ShouldBe(1);
-        Directory.Exists(directory).ShouldBeFalse();
+        File.Exists(Path.Combine(directory, "entry.json")).ShouldBeFalse();
+
+        // The directory itself stays: the next run needs it, and creating it again is pure
+        // churn. Only the entries were promised.
+        Directory.Exists(directory).ShouldBeTrue();
 
         // Clearing twice must not throw; an already-empty cache is a normal state.
-        inspector.ClearCache().Exists.ShouldBeFalse();
+        inspector.ClearCache().Entries.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ClearCacheLeavesFilesItDoesNotOwn()
+    {
+        // The directory comes from configuration and is used verbatim, so --clear-cache must
+        // not be a recursive delete of whatever the user pointed it at. Nothing here asks for
+        // confirmation, which makes the blast radius the whole safety story.
+        var directory = _fixture.PathFor("cache_with_neighbours");
+        Directory.CreateDirectory(directory);
+
+        var entry = Path.Combine(directory, "film.abc123.json");
+        var stranger = Path.Combine(directory, "important-notes.txt");
+        var subdirectory = Path.Combine(directory, "holiday-photos");
+
+        await File.WriteAllTextAsync(entry, "{}", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(stranger, "do not delete", TestContext.Current.CancellationToken);
+        Directory.CreateDirectory(subdirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(subdirectory, "beach.jpg"),
+            "jpeg",
+            TestContext.Current.CancellationToken);
+
+        var cleared = Inspector(directory).ClearCache();
+
+        cleared.Entries.ShouldBe(1);
+        File.Exists(entry).ShouldBeFalse();
+
+        File.Exists(stranger).ShouldBeTrue();
+        Directory.Exists(subdirectory).ShouldBeTrue();
+        File.Exists(Path.Combine(subdirectory, "beach.jpg")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InspectAndClearAgreeOnWhatCountsAsAnEntry()
+    {
+        // "cleared 3 entries" has to mean the 3 that were just reported, so both sides read
+        // the same definition.
+        var directory = _fixture.PathFor("cache_agreement");
+        Directory.CreateDirectory(directory);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(directory, "a.json"), "{}", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(directory, "b.json"), "{}", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(directory, "stray.txt"), "x", TestContext.Current.CancellationToken);
+
+        var inspector = Inspector(directory);
+        var before = inspector.InspectCache();
+
+        before.Entries.ShouldBe(2);
+        inspector.ClearCache().Entries.ShouldBe(before.Entries);
     }
 
     [Fact]

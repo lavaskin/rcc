@@ -186,6 +186,26 @@ public class AudioPlanningTests
         AudioOptions.FromFile("/audio/bed.wav").HasExternalTrack.ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void AnExternalModeWithNoPathCountsAsMuted(string? path)
+    {
+        // Otherwise the three questions disagree: not muted, no segment audio, no external
+        // track. Every consumer would be told audio is wanted and none would have a stream to
+        // take it from, producing a file that is silently silent while claiming otherwise.
+        var audio = new AudioOptions { Mode = AudioMode.External, ExternalPath = path };
+
+        audio.IsMuted.ShouldBeTrue();
+        audio.UsesSegmentAudio.ShouldBeFalse();
+        audio.HasExternalTrack.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AnExternalTrackWithAPathIsNotMuted() =>
+        AudioOptions.FromFile("/audio/bed.wav").IsMuted.ShouldBeFalse();
+
     [Fact]
     public void VolumeIsOnlyConsideredChangedWhenItActuallyIs()
     {

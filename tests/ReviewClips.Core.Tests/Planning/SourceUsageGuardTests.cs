@@ -18,7 +18,7 @@ public class SourceUsageGuardTests
         IEnumerable<Segment> segments,
         double sourceSeconds,
         double limit = SourceUsageGuard.DefaultLimit) =>
-        SourceUsageGuard.Evaluate(segments, [TimeSpan.FromSeconds(sourceSeconds)], limit);
+        SourceUsageGuard.Evaluate(segments, [(Film, TimeSpan.FromSeconds(sourceSeconds))], limit);
 
     // --- Measurement -------------------------------------------------------
 
@@ -69,7 +69,7 @@ public class SourceUsageGuardTests
 
         var report = SourceUsageGuard.Evaluate(
             segments,
-            [TimeSpan.FromSeconds(100), TimeSpan.FromSeconds(100)],
+            [("/a.mkv", TimeSpan.FromSeconds(100)), ("/b.mkv", TimeSpan.FromSeconds(100))],
             SourceUsageGuard.DefaultLimit);
 
         report.Used.ShouldBe(TimeSpan.FromSeconds(10));
@@ -82,7 +82,11 @@ public class SourceUsageGuardTests
     {
         var report = SourceUsageGuard.Evaluate(
             [Clip(0)],
-            [TimeSpan.FromSeconds(100), TimeSpan.Zero, TimeSpan.FromSeconds(-5)],
+            [
+                (Film, TimeSpan.FromSeconds(100)),
+                ("/empty.mkv", TimeSpan.Zero),
+                ("/negative.mkv", TimeSpan.FromSeconds(-5)),
+            ],
             SourceUsageGuard.DefaultLimit);
 
         report.Available.ShouldBe(TimeSpan.FromSeconds(100));
@@ -95,6 +99,104 @@ public class SourceUsageGuardTests
 
         report.Fraction.ShouldBe(0d);
         report.ExceedsLimit.ShouldBeFalse();
+    }
+
+    // --- Per-source measurement --------------------------------------------
+
+    [Fact]
+    public void AnUnusedSourceDoesNotDiluteTheFigureTheLimitTests()
+    {
+        // The loophole an aggregate measurement would leave wide open: 80% of one film, hidden
+        // behind nine untouched hours. Adding footage you do not use is not a way to use less
+        // of the footage you do.
+        var segments = new[] { Clip(0, 80, "/a.mkv") };
+
+        var report = SourceUsageGuard.Evaluate(
+            segments,
+            [("/a.mkv", TimeSpan.FromSeconds(100)), ("/unused.mkv", TimeSpan.FromSeconds(9900))],
+            SourceUsageGuard.DefaultLimit);
+
+        // The aggregate is diluted to under one per cent, which is exactly why it is not what
+        // the limit is tested against.
+        report.Fraction.ShouldBeLessThan(0.01d);
+
+        report.PeakFraction.ShouldBe(0.80d, 0.0001d);
+        report.ExceedsLimit.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void PeakIsTheHeaviestSourceNotTheFirst()
+    {
+        var segments = new[] { Clip(0, 5, "/light.mkv"), Clip(0, 90, "/heavy.mkv") };
+
+        var report = SourceUsageGuard.Evaluate(
+            segments,
+            [("/light.mkv", TimeSpan.FromSeconds(100)), ("/heavy.mkv", TimeSpan.FromSeconds(100))],
+            SourceUsageGuard.DefaultLimit);
+
+        report.Peak.ShouldNotBeNull();
+        report.Peak.Path.ShouldBe("/heavy.mkv");
+        report.Peak.Fraction.ShouldBe(0.90d, 0.0001d);
+    }
+
+    [Fact]
+    public void EverySourceGetsAnEntryIncludingUntouchedOnes()
+    {
+        var report = SourceUsageGuard.Evaluate(
+            [Clip(0, 5, "/a.mkv")],
+            [("/a.mkv", TimeSpan.FromSeconds(100)), ("/b.mkv", TimeSpan.FromSeconds(100))],
+            SourceUsageGuard.DefaultLimit);
+
+        report.Sources.Count.ShouldBe(2);
+
+        var untouched = report.Sources.Single(s => s.Path == "/b.mkv");
+        untouched.Used.ShouldBe(TimeSpan.Zero);
+        untouched.Available.ShouldBe(TimeSpan.FromSeconds(100));
+        untouched.Fraction.ShouldBe(0d);
+    }
+
+    [Fact]
+    public void MessageNamesTheHeaviestSourceWhenThereAreSeveral()
+    {
+        var report = SourceUsageGuard.Evaluate(
+            [Clip(0, 5, "/movies/light.mkv"), Clip(0, 90, "/movies/heavy.mkv")],
+            [
+                ("/movies/light.mkv", TimeSpan.FromSeconds(100)),
+                ("/movies/heavy.mkv", TimeSpan.FromSeconds(100)),
+            ],
+            SourceUsageGuard.DefaultLimit);
+
+        var message = SourceUsageGuard.Describe(report);
+
+        message.ShouldNotBeNull();
+        message.ShouldContain("heavy.mkv");
+        message.ShouldContain("90%");
+    }
+
+    [Fact]
+    public void ASegmentFromAnUndeclaredSourceStillCounts()
+    {
+        // Cannot happen through the pipeline, but silently discarding used footage is the one
+        // failure mode this measurement must not have.
+        var report = SourceUsageGuard.Evaluate(
+            [Clip(0, 5, "/ghost.mkv")],
+            [],
+            SourceUsageGuard.DefaultLimit);
+
+        report.Used.ShouldBe(TimeSpan.FromSeconds(5));
+        report.Sources.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void ADuplicatedSourceIsCountedOnce()
+    {
+        var report = SourceUsageGuard.Evaluate(
+            [Clip(0, 5)],
+            [(Film, TimeSpan.FromSeconds(100)), (Film, TimeSpan.FromSeconds(100))],
+            SourceUsageGuard.DefaultLimit);
+
+        report.Sources.ShouldHaveSingleItem();
+        report.Available.ShouldBe(TimeSpan.FromSeconds(100));
     }
 
     [Fact]

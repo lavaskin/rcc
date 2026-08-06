@@ -103,6 +103,48 @@ public sealed class FfmpegFixture : IAsyncLifetime
             ]);
 
         AudioTrack = await SynthesiseAudioAsync("track.wav", 6);
+
+        var filters = await Runner.RunFfmpegAsync(
+            ["-hide_banner", "-filters"],
+            CancellationToken.None);
+
+        _filters = new HashSet<string>(
+            ReviewClips.Ffmpeg.Diagnostics.EnvironmentInspector.ParseFilterNames(filters.StandardOutput),
+            StringComparer.Ordinal);
+
+        // drawtext existing is not the same as drawtext working: with no fontfile it asks
+        // fontconfig for a default family, which fails on an image that has libfreetype and no
+        // fonts. Established once here so the caption tests can skip rather than fail.
+        FontAvailable = _filters.Contains("drawtext") && await CanDrawTextAsync();
+    }
+
+    private HashSet<string> _filters = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether this FFmpeg was built with a given filter.
+    /// <para>
+    /// Tests for optional features gate on this. Asserting instead would mean a build without
+    /// libzimg reports "rcc is broken" when the truth is "this FFmpeg cannot tone-map", and the
+    /// failure would look identical to a genuine regression in the graph builder.
+    /// </para>
+    /// </summary>
+    public bool HasFilter(string name) => _filters.Contains(name);
+
+    /// <summary>Whether <c>drawtext</c> can resolve a font, not merely whether it exists.</summary>
+    public bool FontAvailable { get; private set; }
+
+    private async Task<bool> CanDrawTextAsync()
+    {
+        var result = await Runner.RunFfmpegAsync(
+            [
+                "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=64x64:d=1",
+                "-vf", "drawtext=text=rcc:fontcolor=white:fontsize=16",
+                "-frames:v", "1", "-f", "null", "-",
+            ],
+            CancellationToken.None);
+
+        return result.Success;
     }
 
     public ValueTask DisposeAsync()

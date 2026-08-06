@@ -34,8 +34,19 @@ public sealed record AudioOptions
     /// </summary>
     public bool MatchDuration { get; init; }
 
-    /// <summary>True when no audio stream should be written at all.</summary>
-    public bool IsMuted => Mode == AudioMode.Mute;
+    /// <summary>
+    /// True when no audio stream should be written at all.
+    /// <para>
+    /// <see cref="AudioMode.External"/> without a path counts as muted. That combination is a
+    /// contradiction rather than an instruction, and the alternative reading is worse than
+    /// useless: every consumer would be told audio is wanted, none would have a stream to
+    /// take it from, and the result is a file that is silently silent while declaring itself
+    /// otherwise. Collapsing it here means the three questions below cannot disagree whatever
+    /// the mode says.
+    /// </para>
+    /// </summary>
+    public bool IsMuted => Mode == AudioMode.Mute
+        || (Mode == AudioMode.External && !HasExternalTrack);
 
     /// <summary>
     /// True when each clip keeps its own audio. False for an external track: its single

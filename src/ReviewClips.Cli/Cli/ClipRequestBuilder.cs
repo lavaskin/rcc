@@ -129,15 +129,24 @@ internal sealed class ClipRequestBuilder
             Saturation = parse.GetValue(_options.Saturation) ?? request.Look.Saturation,
             Contrast = parse.GetValue(_options.Contrast) ?? request.Look.Contrast,
             Gamma = parse.GetValue(_options.Gamma) ?? request.Look.Gamma,
-            Grayscale = parse.GetValue(_options.Grayscale) || request.Look.Grayscale,
+
+            // An explicit --saturation settles the grayscale question by itself: asking for a
+            // specific amount of colour is incompatible with asking for none, and the typed
+            // value is the more recent instruction. Resolving it here rather than leaving both
+            // set means the request that reaches the renderer, the summary and the manifest
+            // holds no contradiction for any of them to resolve differently.
+            Grayscale = parse.GetResult(_options.Saturation) is not null
+                ? false
+                : Toggle(parse, _options.Grayscale, _options.NoGrayscale, request.Look.Grayscale),
             Blur = parse.GetValue(_options.Blur) ?? request.Look.Blur,
             Sharpen = parse.GetValue(_options.Sharpen) ?? request.Look.Sharpen,
             Pixelate = parse.GetValue(_options.Pixelate) ?? request.Look.Pixelate,
             FadeEdges = parse.GetValue(_options.FadeEdges) ?? request.Look.FadeEdges,
             Grain = parse.GetValue(_options.Grain) ?? request.Look.Grain,
-            Vignette = parse.GetValue(_options.Vignette) || request.Look.Vignette,
-            Mirror = parse.GetValue(_options.Mirror) || request.Look.Mirror,
-            FlipVertical = parse.GetValue(_options.FlipVertical) || request.Look.FlipVertical,
+            Vignette = Toggle(parse, _options.Vignette, _options.NoVignette, request.Look.Vignette),
+            Mirror = Toggle(parse, _options.Mirror, _options.NoMirror, request.Look.Mirror),
+            FlipVertical = Toggle(
+                parse, _options.FlipVertical, _options.NoFlipVertical, request.Look.FlipVertical),
             Attribution = parse.GetValue(_options.Attribution) ?? request.Look.Attribution,
             AttributionPosition = parse.GetValue(_options.AttributionPosition)
                 ?? request.Look.AttributionPosition,
@@ -217,6 +226,33 @@ internal sealed class ClipRequestBuilder
         Validate(result);
         ValidateAudio(parse, result);
         return result;
+    }
+
+    /// <summary>
+    /// Resolves a boolean look option that a profile may also set.
+    /// <para>
+    /// A bare <c>bool</c> flag cannot express "off", only "not mentioned", so ORing it with the
+    /// inherited value makes a profile's <c>true</c> permanent and breaks the precedence rule
+    /// the rest of this class follows. The paired <c>--no-</c> flag supplies the missing third
+    /// state, restoring "CLI beats profile beats default" for these the same as for every
+    /// nullable option.
+    /// </para>
+    /// <para>
+    /// Both flags together is a contradiction with no sensible reading, so it is refused rather
+    /// than silently resolved in one direction.
+    /// </para>
+    /// </summary>
+    private static bool Toggle(ParseResult parse, Option<bool> on, Option<bool> off, bool inherited)
+    {
+        var turnedOn = parse.GetValue(on);
+        var turnedOff = parse.GetValue(off);
+
+        if (turnedOn && turnedOff)
+        {
+            throw new CliUsageException($"{on.Name} and {off.Name} cannot both be given.");
+        }
+
+        return turnedOn || (!turnedOff && inherited);
     }
 
     /// <summary>
@@ -372,12 +408,17 @@ internal sealed class ClipRequestBuilder
             throw new CliUsageException("--fade-edges cannot be negative.");
         }
 
-        if (request.Look.FadeEdges >= request.SpliceLength)
+        // Half, not the whole length: --fade-edges is applied twice, once at each end, so a
+        // value above half the clip makes the two fades meet in the middle and the clip never
+        // reaches full brightness. FadeEdgesStage clamps to exactly this, and a limit that let
+        // through values the stage then silently corrects would be no limit at all.
+        if (request.Look.HasFadeEdges && request.Look.FadeEdges * 2 > request.SpliceLength)
         {
             throw new CliUsageException(
-                $"--fade-edges ({request.Look.FadeEdges.TotalSeconds:0.##}s) must be shorter than "
-                + $"--splice ({request.SpliceLength.TotalSeconds:0.##}s), or every clip fades "
-                + "for its whole length.");
+                $"--fade-edges ({request.Look.FadeEdges.TotalSeconds:0.##}s) must be at most half "
+                + $"of --splice ({request.SpliceLength.TotalSeconds:0.##}s), i.e. "
+                + $"{(request.SpliceLength / 2).TotalSeconds:0.##}s. It is applied at both ends, "
+                + "so anything longer means every clip fades for its whole length.");
         }
 
         if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)

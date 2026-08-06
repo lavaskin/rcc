@@ -245,7 +245,7 @@ public sealed class RenderPipeline
         // consumed, so measuring before it would report the pool rather than the render.
         var usage = SourceUsageGuard.Evaluate(
             segments,
-            sources.Select(s => s.Info.Duration),
+            sources.Select(s => (s.Info.Path, s.Info.Duration)),
             request.MaxSourceFraction);
 
         if (SourceUsageGuard.Describe(usage) is { } usageMessage)
