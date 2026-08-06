@@ -78,12 +78,10 @@ public static class FilterStageOrder
     /// <summary>Grain last among the looks, so it is not blurred away.</summary>
     public const int Grain = 1200;
 
-    public const int Overlay = 1300;
-
     /// <summary>
-    /// After <see cref="Overlay"/> and well before <see cref="OutputFormat"/>. A credit line
-    /// exists to be read, so nothing that obscures the frame may run after it — being blurred,
-    /// grained or watermarked over would defeat the point of burning it in.
+    /// After every look and well before <see cref="OutputFormat"/>. A credit line exists to
+    /// be read, so nothing that obscures the frame may run after it — being blurred or
+    /// grained over would defeat the point of burning it in.
     /// </summary>
     public const int Attribution = 1350;
 

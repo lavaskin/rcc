@@ -32,7 +32,6 @@ public sealed class VideoFilterGraphBuilder
             new VignetteStage(),
             new FadeEdgesStage(),
             new GrainStage(),
-            new OverlayStage(),
             new AttributionStage(),
             new OutputFormatStage(),
         ]);

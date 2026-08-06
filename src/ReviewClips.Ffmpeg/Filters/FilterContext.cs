@@ -15,13 +15,10 @@ public sealed record FilterContext
     /// <summary>Output duration of the segment. Needed to pace time-based effects like Ken Burns.</summary>
     public required TimeSpan SegmentDuration { get; init; }
 
-    /// <summary>FFmpeg input index of the overlay image, when <see cref="LookOptions.OverlayPath"/> is set.</summary>
-    public int? OverlayInputIndex { get; init; }
-
     /// <summary>
     /// Path to the file holding <see cref="LookOptions.Attribution"/>, when one has been
-    /// written. Supplied by the caller for the same reason as <see cref="OverlayInputIndex"/>:
-    /// the graph builder describes a graph and does not touch the disk.
+    /// written. Supplied by the caller because the graph builder describes a graph and
+    /// does not touch the disk.
     /// </summary>
     public string? AttributionTextPath { get; init; }
 

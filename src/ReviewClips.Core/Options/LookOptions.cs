@@ -83,12 +83,6 @@ public sealed record LookOptions
     /// <summary>Playback rate multiplier. 1.0 disables. 0.5 is half speed.</summary>
     public double Speed { get; init; } = 1d;
 
-    /// <summary>Optional image composited over every segment (watermark, texture, grade overlay).</summary>
-    public string? OverlayPath { get; init; }
-
-    /// <summary>Opacity for <see cref="OverlayPath"/>.</summary>
-    public double OverlayOpacity { get; init; } = 1d;
-
     /// <summary>Optional 3D LUT (.cube) applied for colour grading.</summary>
     public string? LutPath { get; init; }
 

@@ -83,13 +83,6 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
 
         var nextInput = 1;
 
-        var overlayIndex = default(int?);
-        if (!string.IsNullOrWhiteSpace(look.OverlayPath))
-        {
-            arguments.AddRange(["-i", look.OverlayPath]);
-            overlayIndex = nextInput++;
-        }
-
         // Segment audio is wanted, but this particular source has no audio stream. Both stitchers
         // require every segment to carry the same stream layout — the concat demuxer for a clean
         // stream copy, the filter graph because it references [k:a] for each input and cannot bind
@@ -117,7 +110,6 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             Format = request.Format,
             Look = look,
             SegmentDuration = segment.Duration,
-            OverlayInputIndex = overlayIndex,
 
             // Content-addressed, so the many parallel extractions of one render all resolve to
             // the same file and write it at most once.

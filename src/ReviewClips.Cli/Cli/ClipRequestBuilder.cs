@@ -153,8 +153,6 @@ internal sealed class ClipRequestBuilder
                 ?? request.Look.AttributionPosition,
             ZoomEnd = parse.GetValue(_options.Zoom) ?? request.Look.ZoomEnd,
             Speed = parse.GetValue(_options.Speed) ?? request.Look.Speed,
-            OverlayPath = parse.GetValue(_options.Overlay) ?? request.Look.OverlayPath,
-            OverlayOpacity = parse.GetValue(_options.OverlayOpacity) ?? request.Look.OverlayOpacity,
             LutPath = parse.GetValue(_options.Lut) ?? request.Look.LutPath,
         };
 
@@ -458,7 +456,6 @@ internal sealed class ClipRequestBuilder
         RequireRange(request.Look.Saturation, 0d, 3d, "--saturation must be between 0 and 3.");
         RequireRange(request.Look.Contrast, 0d, 3d, "--contrast must be between 0 and 3.");
         RequireRange(request.Look.Blur, 0d, 50d, "--blur must be between 0 and 50.");
-        RequireRange(request.Look.OverlayOpacity, 0d, 1d, "--overlay-opacity must be between 0 and 1.");
         RequireRange(request.Look.Grain, 0d, 100d, "--grain must be between 0 and 100.");
 
         // Zoom is a scale factor, so below 1 is a zoom out and exactly 1 is off. Zero or
@@ -510,11 +507,6 @@ internal sealed class ClipRequestBuilder
         if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)
         {
             throw new CliUsageException("--strategy cues requires at least one timestamp via --cues.");
-        }
-
-        if (request.Look.OverlayPath is { } overlay && !File.Exists(overlay))
-        {
-            throw new CliUsageException($"Overlay image not found: {overlay}");
         }
 
         if (request.Look.LutPath is { } lut && !File.Exists(lut))

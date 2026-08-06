@@ -317,8 +317,6 @@ Without it, HDR sources render washed out.
 | `--zoom <factor>` | `1.0` | Slow zoom across each clip, e.g. `1.08`. |
 | `--speed <m>` | `1.0` | Playback rate. Source read length is adjusted to keep output length. |
 | `--lut <path>` | none | 3D LUT (`.cube`). |
-| `--overlay <path>` | none | Image composited over every clip. |
-| `--overlay-opacity <0-1>` | `1.0` | Overlay alpha. |
 | `--attribution <text>` | none | Burns a credit line into a corner of every clip. |
 | `--attribution-position <pos>` | `bottom-right` | `bottom-right`, `bottom-left`, `top-left`, `top-right`, `top`, `bottom`, `center`. |
 

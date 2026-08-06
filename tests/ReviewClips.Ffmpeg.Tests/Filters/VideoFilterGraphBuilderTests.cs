@@ -32,7 +32,6 @@ public class VideoFilterGraphBuilderTests
         MediaInfo? source = null,
         OutputFormat? format = null,
         LookOptions? look = null,
-        int? overlayIndex = null,
         string? attributionTextPath = null,
         double segmentSeconds = 5) => new()
         {
@@ -40,7 +39,6 @@ public class VideoFilterGraphBuilderTests
             Format = format ?? OutputFormat.Youtube,
             Look = look ?? LookOptions.None,
             SegmentDuration = TimeSpan.FromSeconds(segmentSeconds),
-            OverlayInputIndex = overlayIndex,
             AttributionTextPath = attributionTextPath,
         };
 
@@ -339,20 +337,6 @@ public class VideoFilterGraphBuilderTests
     [Fact]
     public void Zoom_IsOmittedAtUnityScale() =>
         Build(Context(look: new LookOptions { ZoomEnd = 1.0 })).ShouldNotContain("zoompan");
-
-    [Fact]
-    public void Overlay_IsOnlyEmittedWhenAnInputIndexIsAvailable()
-    {
-        var look = new LookOptions { OverlayPath = "/tmp/logo.png", OverlayOpacity = 0.5 };
-
-        // No index means the caller did not add the second -i, so the stage must stay silent.
-        Build(Context(look: look)).ShouldNotContain("overlay=0:0");
-
-        var withInput = Build(Context(look: look, overlayIndex: 1));
-        withInput.ShouldContain("[1:v]");
-        withInput.ShouldContain("colorchannelmixer=aa=0.5");
-        withInput.ShouldContain("overlay=0:0:shortest=1");
-    }
 
     [Fact]
     public void Lut_EscapesPathSeparatorsThatWouldBreakFilterSyntax()

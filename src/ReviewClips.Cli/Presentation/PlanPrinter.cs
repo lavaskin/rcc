@@ -297,11 +297,6 @@ internal static class PlanPrinter
             parts.Add("lut");
         }
 
-        if (look.OverlayPath is not null)
-        {
-            parts.Add("overlay");
-        }
-
         return parts.Count == 0 ? "untouched" : Markup.Escape(string.Join(", ", parts));
     }
 

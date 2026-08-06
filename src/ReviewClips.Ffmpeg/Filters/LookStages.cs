@@ -138,39 +138,6 @@ public sealed class LutStage : IVideoFilterStage
     }
 }
 
-/// <summary>Composites a still image over every segment (watermark, texture, grade overlay).</summary>
-public sealed class OverlayStage : IVideoFilterStage
-{
-    public int Order => FilterStageOrder.Overlay;
-
-    public string Name => "overlay";
-
-    public bool AppliesTo(FilterContext context) =>
-        !string.IsNullOrWhiteSpace(context.Look.OverlayPath) && context.OverlayInputIndex.HasValue;
-
-    public void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel)
-    {
-        var index = context.OverlayInputIndex!.Value;
-        var scaled = writer.NewLabel();
-        var faded = writer.NewLabel();
-        var opacity = Math.Clamp(context.Look.OverlayOpacity, 0d, 1d);
-
-        // Stretch the overlay to the output frame and apply opacity via the alpha channel.
-        writer.AddChain(
-            $"{index}:v",
-            scaled,
-            $"scale={context.Format.Width}:{context.Format.Height}",
-            "format=rgba");
-
-        writer.AddChain(
-            scaled,
-            faded,
-            $"colorchannelmixer=aa={LookStage.Num(opacity)}");
-
-        writer.AddRaw($"[{inputLabel}][{faded}]overlay=0:0:shortest=1[{outputLabel}]");
-    }
-}
-
 public static class FilterEscaping
 {
     /// <summary>

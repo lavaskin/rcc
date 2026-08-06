@@ -290,18 +290,6 @@ internal sealed class GenerateOptions
         HelpName = "multiplier",
     };
 
-    public Option<string?> Overlay { get; } = new("--overlay")
-    {
-        Description = "Image composited over every clip.",
-        HelpName = "path",
-    };
-
-    public Option<double?> OverlayOpacity { get; } = new("--overlay-opacity")
-    {
-        Description = "Opacity of the overlay image.",
-        HelpName = "0-1",
-    };
-
     public Option<string?> Lut { get; } = new("--lut")
     {
         Description = "3D LUT (.cube) applied for colour grading.",
@@ -493,8 +481,6 @@ internal sealed class GenerateOptions
         yield return AttributionPosition;
         yield return Zoom;
         yield return Speed;
-        yield return Overlay;
-        yield return OverlayOpacity;
         yield return Lut;
         yield return Transition;
         yield return TransitionDuration;

@@ -120,10 +120,9 @@ public sealed class AttributionStage : IVideoFilterStage
     public string Name => "attribution";
 
     /// <summary>
-    /// Requires both the text and a materialised file for it, mirroring how
-    /// <see cref="OverlayStage"/> requires both a path and an input index. The extractor owns
-    /// writing the file, so a context without one simply skips the stage rather than falling
-    /// back to inline text that might not survive escaping.
+    /// Requires both the text and a materialised file for it. The extractor owns writing the
+    /// file, so a context without one simply skips the stage rather than falling back to
+    /// inline text that might not survive escaping.
     /// </summary>
     public bool AppliesTo(FilterContext context) =>
         context.Look.HasAttribution && !string.IsNullOrWhiteSpace(context.AttributionTextPath);
