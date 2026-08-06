@@ -61,11 +61,12 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         var segment = request.Segment;
         var look = request.Look;
 
-        // A speed change means the output length differs from the source length consumed.
-        // Read speed * duration seconds so the rendered clip still lands on the target length.
-        var readDuration = look.HasSpeedChange
-            ? TimeSpan.FromSeconds(segment.Duration.TotalSeconds * look.Speed)
-            : segment.Duration;
+        // A speed change means the output length differs from the source length consumed, so the
+        // read window is the wider (or narrower) of the two. Taken from the segment rather than
+        // recomputed from look.Speed: selection reserved this exact stretch when it decided the
+        // clip would fit inside its source, and recomputing it here would be a second opinion on
+        // a question that has already been answered.
+        var readDuration = segment.ReadDuration;
 
         var arguments = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
 

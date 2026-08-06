@@ -186,6 +186,11 @@ public sealed class RenderPipeline
             Options = request.Selection,
             SegmentDurations = durations,
             Random = random,
+
+            // --speed is a look option, but it decides how much source a clip of a given output
+            // length consumes, so selection cannot place clips correctly without it. This is the
+            // only place it crosses over; everything downstream reads it off the segment.
+            SpeedFactor = request.Look.Speed,
         };
 
         // When the distinct-clip pool is capped, select only that many and repeat them to fill

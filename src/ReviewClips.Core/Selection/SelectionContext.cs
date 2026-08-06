@@ -26,10 +26,33 @@ public sealed record SelectionContext
     /// <summary>Seeded RNG. Shared so a single seed reproduces the whole render.</summary>
     public required Random Random { get; init; }
 
+    /// <summary>
+    /// Playback rate the clips will be retimed by, from <c>--speed</c>. 1 leaves everything as it
+    /// was. See <see cref="Segment.SpeedFactor"/>.
+    /// </summary>
+    public double SpeedFactor { get; init; } = 1d;
+
     public int SegmentCount => SegmentDurations.Count;
 
+    /// <summary>
+    /// The stretch of source a single clip needs, which is the longest planned clip after
+    /// retiming.
+    /// <para>
+    /// Every eligibility question is asked with this: whether a range is long enough to sample
+    /// from, whether a candidate start has room for a clip, and how far apart two picks must sit
+    /// to avoid overlapping. All three are about source footage, so all three have to be scaled
+    /// by the speed. Leaving it at the output length is what let a clip at <c>--speed 2</c> run
+    /// off the end of its file, past an excluded range, and over its neighbour.
+    /// </para>
+    /// </summary>
     public TimeSpan LongestSegment =>
-        SegmentDurations.Count == 0 ? TimeSpan.Zero : SegmentDurations.Max();
+        SegmentDurations.Count == 0
+            ? TimeSpan.Zero
+            : ScaleToSource(SegmentDurations.Max());
+
+    /// <summary>Converts an output duration into the source footage needed to produce it.</summary>
+    public TimeSpan ScaleToSource(TimeSpan output) =>
+        SpeedFactor is > 0d and not 1d ? output * SpeedFactor : output;
 
     /// <summary>
     /// The chapters of a source that the current options exclude, in file order. Empty when the

@@ -332,6 +332,13 @@ permanent. Giving both forms of the same option is refused rather than silently 
 `--grayscale` and `--saturation` set the same thing, so passing `--saturation` explicitly wins;
 the plan summary reports whichever one is actually applied.
 
+`--speed` changes how much source a clip of a given output length consumes, and clip selection
+reserves the larger figure. At `--speed 2` a `5s` clip needs ten seconds of contiguous eligible
+footage, so a constrained source yields fewer clips than it would at normal speed and the
+shortfall is reported. This is what keeps a retimed clip from running past the end of its file,
+past a `--range` or `--exclude` boundary, or over its neighbour — and what makes the source-usage
+figures count the footage actually read.
+
 `--fade-edges` is not the same thing as `--transition`. A transition overlaps two neighbouring
 clips and forces the filter-graph stitcher; `--fade-edges` applies within each clip during
 extraction, so it does not by itself prevent the stream-copy join (which needs `--transition none`

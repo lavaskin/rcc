@@ -286,6 +286,11 @@ public abstract class SegmentSelectorBase : ISegmentSelector
                 SourcePath = candidate.SourcePath,
                 Start = candidate.Start,
                 Duration = duration,
+
+                // Placement above reserved the retimed length, so the segment has to carry the
+                // factor that produced it: everything downstream that asks how much source this
+                // clip touches gets the same answer selection just used.
+                SpeedFactor = context.SpeedFactor,
                 Score = candidate.Score,
                 Reason = candidate.Reason,
             });

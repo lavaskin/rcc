@@ -39,6 +39,25 @@ public class SegmentLengthTests
         FrameRate = Fps,
     };
 
+    /// <summary>
+    /// A description of a source that is never opened, for the tests that inspect the command
+    /// line rather than run it.
+    /// </summary>
+    private static MediaInfo SyntheticInfo(string path) => new()
+    {
+        Path = path,
+        FileSizeBytes = 1_000_000,
+        LastModifiedUtc = DateTimeOffset.UnixEpoch,
+        Duration = TimeSpan.FromMinutes(10),
+        Width = 1920,
+        Height = 1080,
+        FrameRate = 24d,
+        VideoCodec = "h264",
+        PixelFormat = "yuv420p",
+        SampleAspectRatio = Core.Primitives.Ratio.One,
+        HasAudio = true,
+    };
+
     private async Task<(MediaInfo Info, EncoderProfile Encoder)> SetUpAsync()
     {
         var probe = new FfprobeMediaProbe(_fixture.Runner, NullLogger<FfprobeMediaProbe>.Instance);
@@ -159,8 +178,16 @@ public class SegmentLengthTests
         (await _fixture.FrameCountOfAsync(output)).ShouldBe(expected);
     }
 
-    [Fact]
-    public async Task ASpeedChangedSegmentIsStillCutToTheOutputLength()
+    /// <summary>
+    /// The frame cap is on the output, so it is derived from the rendered length rather than from
+    /// the longer or shorter stretch of source read to produce it. Run at both a slower and a
+    /// faster rate: only the faster one reads more source than it emits, and it is the direction
+    /// that can run off the end of a file.
+    /// </summary>
+    [Theory]
+    [InlineData(0.5)]
+    [InlineData(2.0)]
+    public async Task ASpeedChangedSegmentIsStillCutToTheOutputLength(double speed)
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
 
@@ -173,8 +200,6 @@ public class SegmentLengthTests
 
         var output = _fixture.PathFor($"speed_{Guid.NewGuid():N}.mp4");
 
-        // The frame cap is on the output, so it must be derived from the rendered length rather
-        // than from the longer or shorter stretch of source that was read to produce it.
         await extractor.ExtractAsync(
             new SegmentExtractionRequest
             {
@@ -183,11 +208,12 @@ public class SegmentLengthTests
                     SourcePath = info.Path,
                     Start = TimeSpan.FromSeconds(3),
                     Duration = TimeSpan.FromSeconds(2),
+                    SpeedFactor = speed,
                 },
                 Source = info,
                 OutputPath = output,
                 Format = SmallFormat,
-                Look = new LookOptions { Darken = 0, Saturation = 1, Speed = 0.5 },
+                Look = new LookOptions { Darken = 0, Saturation = 1, Speed = speed },
                 Encoder = encoder,
                 EncoderOptions = new EncoderOptions { Preference = EncoderPreference.X264 },
                 Mute = true,
@@ -196,6 +222,52 @@ public class SegmentLengthTests
             TestContext.Current.CancellationToken);
 
         (await _fixture.FrameCountOfAsync(output)).ShouldBe(60);
+    }
+
+    /// <summary>
+    /// A clip is two lengths at once under <c>--speed</c>, and the extractor has to read the
+    /// source-side one. Asserted on the command line rather than on a file, because reading too
+    /// much source is invisible in the output — the frame cap trims the surplus — right up until
+    /// the surplus runs past the end of the file and the clip comes out short.
+    /// </summary>
+    [Theory]
+    [InlineData(1.0, "4")]
+    [InlineData(2.0, "8")]
+    [InlineData(0.5, "2")]
+    public void TheReadWindowIsTheSourceSideLength(double speed, string expected)
+    {
+        var extractor = new FfmpegSegmentExtractor(
+            _fixture.Runner,
+            VideoFilterGraphBuilder.CreateDefault(),
+            NullLogger<FfmpegSegmentExtractor>.Instance);
+
+        var arguments = extractor.DescribeArguments(new SegmentExtractionRequest
+        {
+            Segment = new Segment
+            {
+                SourcePath = "/movies/film.mkv",
+                Start = TimeSpan.FromSeconds(10),
+                Duration = TimeSpan.FromSeconds(4),
+                SpeedFactor = speed,
+            },
+            Source = SyntheticInfo("/movies/film.mkv"),
+            OutputPath = "/tmp/out.mp4",
+            Format = SmallFormat,
+            Look = new LookOptions { Darken = 0, Saturation = 1, Speed = speed },
+            Encoder = new EncoderProfile
+            {
+                VideoEncoder = "libx264",
+                IsHardware = false,
+                QualityArguments = [],
+                ExtraArguments = [],
+            },
+            EncoderOptions = new EncoderOptions { Preference = EncoderPreference.X264 },
+            Mute = true,
+        });
+
+        var t = arguments.ToList().IndexOf("-t");
+        t.ShouldBeGreaterThanOrEqualTo(0, "the extractor always bounds the read with -t");
+        arguments[t + 1].ShouldBe(expected);
     }
 
     [Fact]

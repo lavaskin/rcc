@@ -68,14 +68,19 @@ public sealed class CueDrivenSegmentSelector : ISegmentSelector
                 start = TimeSpan.Zero;
             }
 
-            // Never run past the end of the file.
+            // Never run past the end of the file. Measured in source footage, so a retimed clip
+            // is held to what it will actually read rather than to what it will play back as.
             var available = source.Info.Duration - start;
             if (available <= TimeSpan.Zero)
             {
                 continue;
             }
 
-            var duration = perCue < available ? perCue : available;
+            var affordable = context.SpeedFactor is > 0d and not 1d
+                ? TimeSpan.FromSeconds(available.TotalSeconds / context.SpeedFactor)
+                : available;
+
+            var duration = perCue < affordable ? perCue : affordable;
             if (duration <= TimeSpan.Zero)
             {
                 continue;
@@ -86,6 +91,7 @@ public sealed class CueDrivenSegmentSelector : ISegmentSelector
                 SourcePath = source.Path,
                 Start = start,
                 Duration = duration,
+                SpeedFactor = context.SpeedFactor,
                 Score = 1d,
                 Reason = reason,
             });

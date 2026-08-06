@@ -87,12 +87,14 @@ internal static class SelectionTestData
         int segmentCount,
         double segmentSeconds = 5,
         SelectionOptions? options = null,
-        int seed = 42) => new()
+        int seed = 42,
+        double speed = 1d) => new()
         {
             Sources = sources,
             Options = options ?? new SelectionOptions(),
             SegmentDurations = Enumerable.Repeat(TimeSpan.FromSeconds(segmentSeconds), segmentCount).ToList(),
             Random = new Random(seed),
+            SpeedFactor = speed,
         };
 
     public static TimeRange Range(double start, double end) =>
