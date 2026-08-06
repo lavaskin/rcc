@@ -27,7 +27,6 @@ Using material you do not own carries constraints worth understanding before you
 - [Configuration](#configuration)
 - [Exit codes](#exit-codes)
 - [How it works](#how-it-works)
-- [Performance](#performance)
 - [Copyright and sourcing](#copyright-and-sourcing)
 - [Development](#development)
 
@@ -672,29 +671,6 @@ Two invariants hold regardless of settings:
 
 `--duration` refers to the runtime of the finished file. Transition overlap is accounted for, so
 the output length matches the request.
-
----
-
-## Performance
-
-Measured on an RTX 5090 with NVENC, using a 1h39m 1080p source.
-
-| Operation | Time |
-| --- | --- |
-| First analysis of a source | 40s (~148x realtime) |
-| Subsequent runs (cached) | ~0.2s |
-| 16-minute render, 210 clips | 2m15s |
-| 16-minute render, `--max-clips 50` | 1m31s |
-| 90-second render | ~10s |
-
-Notes:
-
-- Analysis dominates the first run against any source and is cached thereafter.
-- `--transition none` with both fades at `0` removes the final encode pass.
-- `--fit blur-pad` is significantly slower than other fit modes; `gblur` runs on the CPU.
-- `--hwdecode` has a fixed CUDA setup cost that can exceed its benefit on short reads. It is off by
-  default and worth benchmarking before enabling.
-- `-q 26` roughly halves output size versus the `-q 20` default.
 
 ---
 
