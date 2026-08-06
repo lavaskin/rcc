@@ -677,12 +677,27 @@ public sealed class RenderPipeline
             return null;
         }
 
-        var direction = difference < TimeSpan.Zero ? "short of" : "longer than";
+        var short_ = difference < TimeSpan.Zero;
+        var direction = short_ ? "short of" : "longer than";
 
-        var advice = request.Selection.Strategy == SelectionStrategy.Cues
-            ? "Each cue takes an equal share of the runtime, so a cue too close to the end of its "
-                + "source is capped at what remains. Move it earlier, add cues, or shorten --duration."
-            : "Try a shorter --splice, a smaller --min-gap, or more sources.";
+        // The two directions have different causes and so different remedies, and for cues they
+        // are not even the same kind of problem: coming up short means a cue could not be given
+        // its share, running long means there were more cues than the runtime can divide.
+        var advice = (request.Selection.Strategy, short_) switch
+        {
+            (SelectionStrategy.Cues, true) =>
+                "Each cue takes an equal share of the runtime, so a cue too close to the end of "
+                + "its source is capped at what remains. Move it earlier or shorten --duration.",
+
+            (SelectionStrategy.Cues, false) =>
+                $"{request.Selection.Cues.Count} cues divide into shares too short to be clips, so "
+                + "each was raised to the shortest clip worth cutting. Use fewer cues or lengthen "
+                + "--duration.",
+
+            (_, true) => "Try a shorter --splice, a smaller --min-gap, or more sources.",
+
+            _ => "Try a shorter --splice or a shorter --transition-duration.",
+        };
 
         return $"This render comes out {rendered.TotalSeconds:0.#}s, "
             + $"{difference.Duration().TotalSeconds:0.#}s {direction} the "

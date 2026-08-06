@@ -130,4 +130,41 @@ public class EqualSplicePlanTests
         Rendered(naive, 0.4).ShouldBeGreaterThan(320d);
         Rendered(SplicePlanner.PlanEqualForOutput(target, 2, transition), 0.4).ShouldBe(300d, 0.0001);
     }
+
+    /// <summary>
+    /// Enough cues over a short enough runtime and the equal share stops being a clip at all.
+    /// Nothing in the arithmetic prevents that, because the arithmetic is solving for the target
+    /// and the target is what has to give.
+    /// </summary>
+    [Theory]
+    [InlineData(5, 15)]
+    [InlineData(2, 40)]
+    [InlineData(0.5, 100)]
+    public void PlanEqualForOutput_NeverPlansAClipBelowTheMinimum(double target, int count)
+    {
+        var durations = SplicePlanner.PlanEqualForOutput(
+            TimeSpan.FromSeconds(target),
+            count,
+            TimeSpan.FromSeconds(0.4));
+
+        durations.Count.ShouldBe(count, "no cue is dropped to make the arithmetic work");
+        durations.ShouldAllBe(d => d >= SplicePlanner.MinimumSegment);
+    }
+
+    /// <summary>
+    /// And the floor is not reached in the ordinary case, so it cannot be quietly inflating
+    /// renders that were landing exactly.
+    /// </summary>
+    [Theory]
+    [InlineData(300, 3)]
+    [InlineData(90, 8)]
+    [InlineData(60, 20)]
+    public void PlanEqualForOutput_LeavesAnOrdinaryDivisionAlone(double target, int count)
+    {
+        Rendered(
+                SplicePlanner.PlanEqualForOutput(
+                    TimeSpan.FromSeconds(target), count, TimeSpan.FromSeconds(0.4)),
+                0.4)
+            .ShouldBe(target, 0.0001);
+    }
 }

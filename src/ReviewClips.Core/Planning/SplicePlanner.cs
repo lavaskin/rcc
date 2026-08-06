@@ -136,12 +136,17 @@ public static class SplicePlanner
             return [];
         }
 
+        // MinimumSegment, deliberately, and not the wider MinimumSegmentFor that PlanForOutput
+        // uses. That floor exists to stop a *random* tail clip capping the overlap; here every
+        // clip is the same length, so the cap is deterministic and the re-solve below already
+        // accounts for it exactly. Raising the floor to twice the transition would overshoot a
+        // request this method can currently satisfy on the nose.
+        var floor = MinimumSegment;
+
         if (count == 1 || transition <= TimeSpan.Zero)
         {
             // A single clip has nothing to overlap with, and hard cuts consume no material.
-            return [.. Enumerable.Repeat(
-                TimeSpan.FromSeconds(outputTarget.TotalSeconds / count),
-                count)];
+            return Equal(outputTarget.TotalSeconds / count, count, floor);
         }
 
         // N clips lose (N-1) overlaps, so the material needed is target + transition * (N-1).
@@ -156,7 +161,29 @@ public static class SplicePlanner
             perClip = 2d * outputTarget.TotalSeconds / (count + 1);
         }
 
-        return [.. Enumerable.Repeat(TimeSpan.FromSeconds(perClip), count)];
+        return Equal(perClip, count, floor);
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> clips of <paramref name="seconds"/>, never shorter than
+    /// <paramref name="floor"/>.
+    /// <para>
+    /// The floor is the one thing an equal division cannot honour by adjusting the arithmetic:
+    /// with enough cues over a short enough runtime the fair share is a fraction of a frame, and
+    /// no amount of transition compensation makes that a clip. Overshooting the request is the
+    /// better of the two failures available, because the alternative is dropping cues — and a
+    /// timestamp the user typed disappearing without trace is worse than a render that runs long.
+    /// The overshoot is reported, so it does not pass unremarked either.
+    /// </para>
+    /// <para>
+    /// Reached only in that degenerate case. Everywhere else the caller's arithmetic has already
+    /// produced a length above the floor and this passes it through untouched.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<TimeSpan> Equal(double seconds, int count, TimeSpan floor)
+    {
+        var length = TimeSpan.FromSeconds(seconds);
+        return [.. Enumerable.Repeat(length > floor ? length : floor, count)];
     }
 
     /// <summary>
