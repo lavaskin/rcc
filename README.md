@@ -380,6 +380,12 @@ removes the last encode pass entirely.
 `-q 20` is high quality for background footage. `-q 26` typically halves file size with no visible
 difference at normal viewing size.
 
+`-q` is not comparable across encoders. It is a CRF for x264 and x265 and a CQ for NVENC, and the
+two scales are not the same scale: at `-q 20` NVENC typically writes around twice the bitrate x264
+does for comparable quality. Since `--encoder auto` prefers NVENC where it exists, the same command
+can produce noticeably larger files on one machine than another. Where output size matters more
+than encode time, `--encoder x264` with a higher `-q` is the better trade.
+
 ### Audio
 
 Output is muted by default: generated footage is intended to sit under narration.
@@ -414,6 +420,12 @@ a video re-encode: only the audio is encoded, so a render already taking the str
 does not carry on at full volume over a frame fading to black. A track shorter than the render is
 padded with silence rather than shortening the video, and the shortfall is reported as a warning;
 a track longer than the render is trimmed to it.
+
+The muxed track is always written as stereo. A mono source is therefore upmixed, and FFmpeg's
+upmix is energy-preserving: the same signal coming from two speakers instead of one is attenuated
+by 3 dB so it does not get louder in the process. That is the correct behaviour, but it does mean
+a mono bed measures about 3 dB below where it started. `--audio-volume 1.4` restores it if the
+level matters.
 
 ### Analysis
 
