@@ -256,4 +256,46 @@ public class EnvironmentInspectorTests
         report.Encoders.ShouldAllBe(e => !e.Usable);
         report.Filters.Missing.ShouldNotBeEmpty();
     }
+
+    [Fact]
+    public async Task ReportsABinaryThatLaunchesButFailsAsUnavailable()
+    {
+        // Being able to start a process is not the same as having a working FFmpeg. A build
+        // missing a shared library, or one for the wrong architecture, execs fine and then
+        // exits non-zero — and a green row above a render that cannot start is the one thing
+        // doctor must never print.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Needs a POSIX shell script.");
+
+        var stub = _fixture.PathFor("failing_ffmpeg");
+        await File.WriteAllTextAsync(
+            stub,
+            "#!/bin/sh\necho 'error while loading shared libraries: libzimg.so.2' >&2\nexit 127\n",
+            TestContext.Current.CancellationToken);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                stub,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        var inspector = new EnvironmentInspector(
+            new Process.FfmpegRunner(
+                new Process.FfmpegToolset { FfmpegPath = stub, FfprobePath = stub },
+                NullLogger<Process.FfmpegRunner>.Instance),
+            _fixture.EncoderProbe,
+            new JsonAnalysisCache(_fixture.PathFor("broken"), NullLogger<JsonAnalysisCache>.Instance));
+
+        var report = await inspector.InspectAsync(TestContext.Current.CancellationToken);
+
+        report.Ffmpeg.Available.ShouldBeFalse();
+        report.Ffmpeg.Version.ShouldBeNull();
+        report.IsUsable.ShouldBeFalse();
+
+        // The exit code alone says nothing actionable, so the reason the binary gave has to
+        // travel with it.
+        var error = report.Ffmpeg.Error;
+        error.ShouldNotBeNull();
+        error.ShouldContain("127");
+        error.ShouldContain("libzimg.so.2");
+    }
 }

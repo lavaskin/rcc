@@ -84,6 +84,52 @@ public class TextResourcesTests
     }
 
     [Fact]
+    public void AFailedWriteThrowsRatherThanReturningAPathToNothing()
+    {
+        // The caller drops this straight into drawtext's textfile=, and nothing downstream
+        // checks that the file exists. Swallowing the write failure and returning the path
+        // anyway turns a full disk into an opaque FFmpeg error several minutes into a render.
+        var text = $"Unwritable caption {Guid.NewGuid():N}";
+
+        // A directory sitting where the file belongs fails the move for the same reasons a
+        // full or read-only disk would, without needing either.
+        var path = Path.Combine(TextResources.DirectoryPath(), TextResources.NameFor(text) + ".txt");
+        Directory.CreateDirectory(path);
+
+        try
+        {
+            var ex = Should.Throw<IOException>(() => TextResources.Materialise(text));
+
+            ex.Message.ShouldContain(path);
+            ex.InnerException.ShouldNotBeNull();
+        }
+        finally
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AStrayTemporaryFileIsNotLeftBehindByAFailedWrite()
+    {
+        var text = $"Unwritable caption {Guid.NewGuid():N}";
+        var path = Path.Combine(TextResources.DirectoryPath(), TextResources.NameFor(text) + ".txt");
+        Directory.CreateDirectory(path);
+
+        try
+        {
+            Should.Throw<IOException>(() => TextResources.Materialise(text));
+
+            Directory.GetFiles(TextResources.DirectoryPath(), Path.GetFileName(path) + ".*.tmp")
+                .ShouldBeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ConcurrentCallersAllGetTheSameIntactFile()
     {
         // The claim the doc comment makes: parallel extractions of one render need no

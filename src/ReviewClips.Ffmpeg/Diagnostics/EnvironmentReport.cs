@@ -440,15 +440,16 @@ public sealed class EnvironmentInspector
         string path,
         CancellationToken cancellationToken)
     {
+        FfmpegRunResult result;
+
         try
         {
-            // The same launchability check the render path performs, so a green row here means
-            // a render will get past startup.
-            await new FfmpegToolset
-            {
-                FfmpegPath = path,
-                FfprobePath = path,
-            }.EnsureAvailableAsync(cancellationToken);
+            // A single launch of this one binary, which is both the launchability check and the
+            // source of the version string. Routing through FfmpegToolset.EnsureAvailableAsync
+            // instead would verify whichever pair that toolset was configured with rather than
+            // `path`, and it runs -version once per property, so the row cost three launches of
+            // the same executable to produce.
+            result = await _runner.RunAsync(path, ["-version"], null, null, cancellationToken);
         }
         catch (FfmpegNotFoundException ex)
         {
@@ -461,7 +462,19 @@ public sealed class EnvironmentInspector
             };
         }
 
-        var result = await _runner.RunAsync(path, ["-version"], null, null, cancellationToken);
+        // Launching is not the same as working. A build missing a shared library, or one for the
+        // wrong architecture, starts and then exits non-zero; reporting that as available would
+        // put a green row above a render that cannot get off the ground.
+        if (!result.Success)
+        {
+            return new ToolStatus
+            {
+                Name = name,
+                Path = path,
+                Available = false,
+                Error = $"'{path} -version' exited with code {result.ExitCode}. {LastLine(result.StandardError)}".TrimEnd(),
+            };
+        }
 
         return new ToolStatus
         {
@@ -471,6 +484,15 @@ public sealed class EnvironmentInspector
             Version = ParseVersion(result.StandardOutput),
         };
     }
+
+    /// <summary>
+    /// The last non-empty line of stderr, which is where the actual cause sits. Kept to one
+    /// line because the doctor table renders <see cref="ToolStatus.Error"/> inline.
+    /// </summary>
+    private static string LastLine(string standardError) =>
+        standardError
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .LastOrDefault(string.Empty);
 
     private async Task<IReadOnlyList<EncoderStatus>> ProbeEncodersAsync(CancellationToken cancellationToken)
     {

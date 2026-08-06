@@ -53,9 +53,20 @@ public static class TextResources
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Another process won the race and wrote identical content, which is the only thing
-            // it could have written given the name is a hash of it.
             TryDelete(staging);
+
+            // Losing the race to another process is benign: the name is a hash of the content,
+            // so identical bytes are the only thing the winner could have written. Anything
+            // else — a full disk, a read-only temp directory, a denied write — leaves no file
+            // at all, and returning the path regardless would hand drawtext a textfile= that
+            // does not exist. That surfaces much later as an opaque mid-render FFmpeg failure,
+            // so the cause is reported here instead.
+            if (!IsIntact(path, bytes.Length))
+            {
+                throw new IOException(
+                    $"Could not write attribution text to '{path}': {ex.Message}",
+                    ex);
+            }
         }
 
         return path;
