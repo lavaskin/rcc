@@ -42,32 +42,32 @@ public sealed class FfmpegEncoderSelector : IEncoderSelector
                 return Software("libx265", options);
 
             case EncoderPreference.Nvenc:
-            {
-                var name = NvencName(options.Codec);
-                if (!await _probe.IsUsableAsync(name, cancellationToken))
                 {
-                    throw new FfmpegExecutionException(
-                        $"'{name}' was requested but is not usable on this machine. "
-                        + "Check the NVIDIA driver, or use --encoder auto.");
-                }
+                    var name = NvencName(options.Codec);
+                    if (!await _probe.IsUsableAsync(name, cancellationToken))
+                    {
+                        throw new FfmpegExecutionException(
+                            $"'{name}' was requested but is not usable on this machine. "
+                            + "Check the NVIDIA driver, or use --encoder auto.");
+                    }
 
-                return Hardware(name, options);
-            }
-
-            case EncoderPreference.Auto:
-            default:
-            {
-                var name = NvencName(options.Codec);
-                if (await _probe.IsUsableAsync(name, cancellationToken))
-                {
-                    _logger.LogInformation("Using hardware encoder {Encoder}", name);
                     return Hardware(name, options);
                 }
 
-                var fallback = options.Codec == VideoCodecKind.Hevc ? "libx265" : "libx264";
-                _logger.LogInformation("Hardware encoding unavailable; using {Encoder}", fallback);
-                return Software(fallback, options);
-            }
+            case EncoderPreference.Auto:
+            default:
+                {
+                    var name = NvencName(options.Codec);
+                    if (await _probe.IsUsableAsync(name, cancellationToken))
+                    {
+                        _logger.LogInformation("Using hardware encoder {Encoder}", name);
+                        return Hardware(name, options);
+                    }
+
+                    var fallback = options.Codec == VideoCodecKind.Hevc ? "libx265" : "libx264";
+                    _logger.LogInformation("Hardware encoding unavailable; using {Encoder}", fallback);
+                    return Software(fallback, options);
+                }
         }
     }
 

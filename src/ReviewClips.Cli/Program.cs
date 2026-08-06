@@ -1,4 +1,4 @@
-﻿using System.CommandLine;
+using System.CommandLine;
 using System.Runtime.InteropServices;
 using ReviewClips.Cli;
 using ReviewClips.Cli.Cli;

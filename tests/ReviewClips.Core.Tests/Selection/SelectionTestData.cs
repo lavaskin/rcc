@@ -12,20 +12,20 @@ internal static class SelectionTestData
         double durationSeconds,
         string path = "/movies/film.mkv",
         IReadOnlyList<Chapter>? chapters = null) => new()
-    {
-        Path = path,
-        FileSizeBytes = 1_000_000,
-        LastModifiedUtc = DateTimeOffset.UnixEpoch,
-        Duration = TimeSpan.FromSeconds(durationSeconds),
-        Width = 1920,
-        Height = 1080,
-        FrameRate = 24,
-        VideoCodec = "h264",
-        PixelFormat = "yuv420p",
-        SampleAspectRatio = Ratio.One,
-        HasAudio = true,
-        Chapters = chapters ?? [],
-    };
+        {
+            Path = path,
+            FileSizeBytes = 1_000_000,
+            LastModifiedUtc = DateTimeOffset.UnixEpoch,
+            Duration = TimeSpan.FromSeconds(durationSeconds),
+            Width = 1920,
+            Height = 1080,
+            FrameRate = 24,
+            VideoCodec = "h264",
+            PixelFormat = "yuv420p",
+            SampleAspectRatio = Ratio.One,
+            HasAudio = true,
+            Chapters = chapters ?? [],
+        };
 
     /// <summary>Builds contiguous chapters from <c>(title, endSeconds)</c> pairs.</summary>
     public static IReadOnlyList<Chapter> Chapters(params (string? Title, double EndSeconds)[] parts)
