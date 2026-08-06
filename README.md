@@ -355,8 +355,7 @@ difference at normal viewing size.
 
 ### Audio
 
-Output is muted by default: this footage is intended to sit under narration, and a second audio bed
-competing with your voice is worse than silence.
+Output is muted by default: generated footage is intended to sit under narration.
 
 | Option | Default | Description |
 | --- | --- | --- |
