@@ -24,6 +24,12 @@ public readonly record struct Offset
 
     public bool IsRelative => Fraction.HasValue;
 
+    /// <summary>
+    /// True when this offset trims nothing, whichever form it was given in.
+    /// <c>0s</c> and <c>0%</c> are distinct values but the same instruction.
+    /// </summary>
+    public bool IsZero => Absolute is { Ticks: <= 0 } || Fraction <= 0d;
+
     public static Offset FromTime(TimeSpan value) => new(value, null);
 
     public static Offset FromPercent(double percent) => new(null, percent / 100d);

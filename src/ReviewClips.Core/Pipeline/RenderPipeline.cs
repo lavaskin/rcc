@@ -239,7 +239,7 @@ public sealed class RenderPipeline
 
         if (segments.Count == 0)
         {
-            throw new RenderPlanningException(BuildNoSegmentsMessage(request, sources));
+            throw new RenderPlanningException(BuildNoSegmentsMessage(request, context));
         }
 
         // Cue-driven renders legitimately produce one segment per cue, so report against that
@@ -614,38 +614,34 @@ public sealed class RenderPipeline
         _stitchers.FirstOrDefault(s => s.CanHandle(request))
         ?? throw new RenderPlanningException("No stitcher can handle this request.");
 
-    private static string BuildNoSegmentsMessage(ClipRequest request, IReadOnlyList<SourceMedia> sources)
+    /// <summary>
+    /// Explains an empty selection.
+    /// <para>
+    /// The cause is established by measurement rather than by listing whichever filters happened
+    /// to be enabled — see <see cref="EligibilityDiagnostics"/>. Only the two conditions that
+    /// eligibility arithmetic cannot see are checked directly first.
+    /// </para>
+    /// </summary>
+    private static string BuildNoSegmentsMessage(ClipRequest request, SelectionContext context)
     {
-        var reasons = new List<string>();
-
-        if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)
+        if (request.Selection.Strategy == SelectionStrategy.Cues)
         {
-            reasons.Add("strategy is 'cues' but no cues were supplied (use --cues)");
+            // Cues bypass eligibility entirely, so nothing below would say anything useful.
+            return request.Selection.Cues.Count == 0
+                ? "No usable segments were found. Cause: strategy is 'cues' but no cues were supplied (use --cues)."
+                : "No usable segments were found. Cause: none of the cues fall inside a source "
+                    + "(check the timestamps against 'rcc probe').";
         }
 
-        var shortest = sources.Min(s => s.Info.Duration);
-        if (shortest < request.SpliceLength)
+        if (EligibilityDiagnostics.Explain(context) is { } cause)
         {
-            reasons.Add($"the shortest source ({shortest.TotalSeconds:0.#}s) is shorter than the splice length");
+            return $"No usable segments were found. Cause: {cause}.";
         }
 
-        if (request.Selection.RejectBlack || request.Selection.RejectFrozen)
-        {
-            reasons.Add("black/frozen rejection may have excluded everything (try --no-reject-black / --no-reject-frozen)");
-        }
-
-        var skippedChapters = sources
-            .Sum(s => Media.ChapterFilter.Matching(s.Info.Chapters, request.Selection.EffectiveChapterPatterns).Count);
-        if (skippedChapters > 0)
-        {
-            reasons.Add($"{skippedChapters} chapter(s) were skipped by title (try --chapters off)");
-        }
-
-        var detail = reasons.Count > 0
-            ? " Likely cause: " + string.Join("; ", reasons) + "."
-            : " Try relaxing --min-gap, --skip-head and --skip-tail.";
-
-        return "No usable segments were found." + detail;
+        // Footage was eligible, so the constraint is on where clips may sit relative to each other.
+        return "No usable segments were found. There is eligible footage, but no clips could be "
+            + $"placed in it; try lowering --min-gap (currently {request.Selection.MinGap.TotalSeconds:0.#}s) "
+            + "or shortening --splice.";
     }
 
     private static string CreateWorkingDirectory(ClipRequest request)

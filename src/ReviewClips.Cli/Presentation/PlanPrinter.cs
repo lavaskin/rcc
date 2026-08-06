@@ -136,7 +136,7 @@ internal static class PlanPrinter
     /// excluded titles by name: a silent exclusion of ten minutes of a film is exactly the kind
     /// of thing that should not be invisible.
     /// </summary>
-    private static string? DescribeChapters(RenderPlan plan)
+    internal static string? DescribeChapters(RenderPlan plan)
     {
         var total = plan.Sources.Sum(s => s.Info.Chapters.Count);
         if (total == 0)
@@ -152,6 +152,14 @@ internal static class PlanPrinter
 
         if (skipped.Count == 0)
         {
+            // "none matched" would be a lie when matching never ran: --chapters off with no
+            // --skip-chapter leaves no patterns at all, and a reader is entitled to know the
+            // difference between a filter that found nothing and a filter that was switched off.
+            if (patterns.Count == 0)
+            {
+                return $"{total} marker(s), skipping disabled (--chapters off)";
+            }
+
             return plan.Sources.Any(s => s.Info.HasNamedChapters)
                 ? $"{total} marker(s), none matched as intro or credits"
                 : $"{total} unnamed marker(s), nothing to match against";

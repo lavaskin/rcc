@@ -77,6 +77,15 @@ stitcher three stages later. `RunFfmpegCheckedAsync(requireFrames: true)` reads 
 FFmpeg already reports through `-progress` and fails at the step that actually went wrong, at no
 extra cost.
 
+**An empty selection is explained by measurement, not by listing suspects.**
+`EligibilityDiagnostics` relaxes each filter in turn and recomputes the eligible footage through
+the real `SelectionContext.EligibleRanges`; whichever relaxation restores footage is the one that
+removed it. Enumerating whatever happened to be enabled is easier and misleads: black and frozen
+rejection are on by default, so a render refused because `--range` named a two-second window was
+being advised to try `--no-reject-black`, which costs an analysis pass and changes nothing. Going
+through the real code path rather than reimplementing the subtractions is what keeps the
+explanation from drifting away from the behaviour it explains.
+
 **Attribution text is passed through `drawtext`'s `textfile=`, never `text=`.** A film title is
 precisely the kind of string that breaks FFmpeg's filter grammar: `Leon: The Professional` has a
 colon, `Ocean's Eleven` an apostrophe, and either terminates the filter argument early and fails
