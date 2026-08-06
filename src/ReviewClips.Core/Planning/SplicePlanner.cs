@@ -81,6 +81,54 @@ public static class SplicePlanner
     }
 
     /// <summary>
+    /// Plans <paramref name="count"/> equal-length clips whose <em>finished render</em> lasts
+    /// <paramref name="outputTarget"/>.
+    /// <para>
+    /// This is the cue-driven case, where the clip count is dictated by the caller rather than
+    /// derived from a splice length. <see cref="PlanForOutput"/> cannot be reused for it: that
+    /// method solves the overlap compensation for the clip count <em>it</em> arrives at, and
+    /// spending the same material over a different number of clips loses a different number of
+    /// overlaps. Three cues consuming a budget solved for twenty-six clips overshoot the request
+    /// by the twenty-three transitions they never pay for.
+    /// </para>
+    /// </summary>
+    /// <param name="outputTarget">Desired runtime of the finished file.</param>
+    /// <param name="count">Number of clips to divide it between.</param>
+    /// <param name="transition">Requested transition duration; pass zero for hard cuts.</param>
+    public static IReadOnlyList<TimeSpan> PlanEqualForOutput(
+        TimeSpan outputTarget,
+        int count,
+        TimeSpan transition)
+    {
+        if (outputTarget <= TimeSpan.Zero || count <= 0)
+        {
+            return [];
+        }
+
+        if (count == 1 || transition <= TimeSpan.Zero)
+        {
+            // A single clip has nothing to overlap with, and hard cuts consume no material.
+            return [.. Enumerable.Repeat(
+                TimeSpan.FromSeconds(outputTarget.TotalSeconds / count),
+                count)];
+        }
+
+        // N clips lose (N-1) overlaps, so the material needed is target + transition * (N-1).
+        var overlaps = count - 1;
+        var perClip = (outputTarget.TotalSeconds + (transition.TotalSeconds * overlaps)) / count;
+
+        // EffectiveTransition caps the overlap at half the shortest clip. When that cap binds the
+        // arithmetic above is solving the wrong equation, so re-solve against the capped form:
+        // rendered = N*p - (p/2)*(N-1) = p*(N+1)/2, hence p = 2*target/(N+1).
+        if (perClip < transition.TotalSeconds * 2d)
+        {
+            perClip = 2d * outputTarget.TotalSeconds / (count + 1);
+        }
+
+        return [.. Enumerable.Repeat(TimeSpan.FromSeconds(perClip), count)];
+    }
+
+    /// <summary>
     /// Mirrors the stitcher's clamp: a transition longer than half the shortest clip would
     /// consume it, so the effective duration is capped.
     /// </summary>

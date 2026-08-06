@@ -220,6 +220,20 @@ public sealed class RenderPipeline
                 context = context with { SegmentDurations = durations.Take(distinctWanted).ToList() };
             }
         }
+        else if (request.Selection.Strategy == SelectionStrategy.Cues)
+        {
+            // Uncapped cues: the clip count is the cue count, not the count the splice cadence
+            // happened to produce, so the runtime has to be divided with that number in mind.
+            // Handing over the splice-derived budget instead overshoots the request by every
+            // transition the cue clips do not pay for — 8% on two cues over five minutes.
+            context = context with
+            {
+                SegmentDurations = SplicePlanner.PlanEqualForOutput(
+                    request.TargetDuration,
+                    request.Selection.Cues.Count,
+                    request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero),
+            };
+        }
 
         var segments = selector.SelectSegments(context);
 

@@ -46,7 +46,8 @@ public sealed class FilterGraphStitcher : IStitcher
             BuildArguments(request, plan),
             plan.TotalDuration,
             progress,
-            cancellationToken);
+            cancellationToken,
+            requireFrames: true);
     }
 
     public IReadOnlyList<string> DescribeArguments(StitchRequest request)

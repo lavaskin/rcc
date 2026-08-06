@@ -50,7 +50,8 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             arguments,
             request.Segment.Duration,
             progress,
-            cancellationToken);
+            cancellationToken,
+            requireFrames: true);
     }
 
     public IReadOnlyList<string> DescribeArguments(SegmentExtractionRequest request)
@@ -160,6 +161,24 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-fps_mode", "cfr"]);
         arguments.AddRange(["-r", Number(request.Format.FrameRate)]);
 
+        // Cut to an exact frame count rather than trusting -t.
+        //
+        // -ss/-t bound which *source* timestamps are read, and the fps filter then resamples that
+        // window onto the output rate. Both steps round outwards, so a segment reliably comes out
+        // one to two frames longer than asked for. One frame is invisible; the concat stitcher
+        // sums actual segment lengths, so across a 119-slot render the same bias compounds into
+        // five seconds of overshoot on a ten-minute request. The filter-graph stitcher is affected
+        // differently but no less: it computes xfade offsets from the planned lengths, so segments
+        // that disagree with the plan push the schedule out of step.
+        //
+        // Asking for fewer frames than FFmpeg would have produced is safe: the read window is
+        // always the wider of the two, so the frames exist and the surplus is simply not written.
+        var frames = FrameCount(segment.Duration, request.Format.FrameRate);
+        if (frames > 0)
+        {
+            arguments.AddRange(["-frames:v", frames.ToString(CultureInfo.InvariantCulture)]);
+        }
+
         // A short, fixed GOP keeps every segment starting on a keyframe, which the concat
         // demuxer requires for a clean stream-copy join.
         var gop = Math.Max((int)Math.Round(request.Format.FrameRate), 1);
@@ -171,6 +190,21 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
 
         arguments.Add(request.OutputPath);
         return arguments;
+    }
+
+    /// <summary>
+    /// How many output frames a segment of <paramref name="duration"/> should contain at
+    /// <paramref name="frameRate"/>. Returns 0 when the frame rate is unusable, which leaves the
+    /// caller to omit the cap rather than write a zero-frame file.
+    /// </summary>
+    internal static int FrameCount(TimeSpan duration, double frameRate)
+    {
+        if (duration <= TimeSpan.Zero || frameRate <= 0d)
+        {
+            return 0;
+        }
+
+        return Math.Max(1, (int)Math.Round(duration.TotalSeconds * frameRate, MidpointRounding.AwayFromZero));
     }
 
     /// <summary>

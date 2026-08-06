@@ -224,6 +224,30 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Counts video frames by decoding them, not by trusting the container's header.
+    /// <para>
+    /// Duration in seconds is too coarse to see the failure this exists for: a segment one or
+    /// two frames longer than it should be is a rounding error at the tolerance a duration
+    /// assertion can reasonably use, and a systematic bias that compounds across a render.
+    /// </para>
+    /// </summary>
+    public async Task<int> FrameCountOfAsync(string path)
+    {
+        var result = await Runner.RunFfprobeAsync(
+            [
+                "-v", "error",
+                "-count_frames",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=nb_read_frames",
+                "-of", "csv=p=0",
+                path,
+            ],
+            CancellationToken.None);
+
+        return int.TryParse(result.StandardOutput.Trim(), out var frames) ? frames : -1;
+    }
+
+    /// <summary>
     /// Counts the chapter markers a file carries. Rendered output must report zero: chapters
     /// belong to the source's structure, and clips assembled from scattered moments have none.
     /// </summary>

@@ -51,7 +51,8 @@ public sealed class ConcatDemuxerStitcher : IStitcher
             BuildArguments(listPath, request),
             total,
             progress,
-            cancellationToken);
+            cancellationToken,
+            requireFrames: true);
     }
 
     public IReadOnlyList<string> DescribeArguments(StitchRequest request)

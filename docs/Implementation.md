@@ -52,6 +52,31 @@ signal thread.
 `SplicePlanner.PlanForOutput` and `ClipSequencer.FillForOutput` resolve this by fixed-point
 iteration.
 
+**Cue renders solve that arithmetic separately, in closed form.** A cue list fixes the clip count
+up front, so there is nothing to iterate towards: `SplicePlanner.PlanEqualForOutput` divides
+`target + transition * (N-1)` by N directly, re-solving against the clamped form when the
+transition exceeds half a clip. It exists because the budget from `PlanForOutput` is only valid for
+the clip count that method arrived at. Spending it over a cue count instead pays back a different
+number of overlaps — three cues consuming a budget planned for twenty-six clips keep the material
+for twenty-three transitions they never perform, overshooting the request by 8%.
+
+**Segments are cut to an exact frame count, not to `-t`.** `-ss`/`-t` bound which *source*
+timestamps are read and the `fps` filter then resamples that window onto the output rate; both
+round outwards, so a segment reliably comes out one to two frames long. The bias is invisible per
+clip and cumulative across a render: the concat stitcher sums actual segment lengths, and 119 slots
+of it reached five seconds of overshoot on a ten-minute request. The filter-graph stitcher is hurt
+differently but no less, since it schedules `xfade` offsets from the *planned* lengths. `-frames:v`
+caps each segment at `round(duration * fps)`, which is always fewer frames than the read window
+supplies, so nothing is ever short.
+
+**A zero exit code from FFmpeg is not proof it encoded anything.** A filter graph that yields no
+frames produces "Output file is empty, nothing was encoded" on stderr, a syntactically valid but
+stream-less container, and exit code 0. The empty file then travels downstream and fails somewhere
+that cannot explain itself — typically as `Stream specifier ':v' matches no streams` from a
+stitcher three stages later. `RunFfmpegCheckedAsync(requireFrames: true)` reads the frame count
+FFmpeg already reports through `-progress` and fails at the step that actually went wrong, at no
+extra cost.
+
 **Attribution text is passed through `drawtext`'s `textfile=`, never `text=`.** A film title is
 precisely the kind of string that breaks FFmpeg's filter grammar: `Leon: The Professional` has a
 colon, `Ocean's Eleven` an apostrophe, and either terminates the filter argument early and fails

@@ -44,7 +44,17 @@ public sealed record RenderPlan
     public double RepeatFactor =>
         DistinctClipCount == 0 ? 0d : (double)Segments.Count / DistinctClipCount;
 
-    /// <summary>Runtime after transition overlaps are accounted for.</summary>
+    /// <summary>
+    /// Runtime after transition overlaps are accounted for.
+    /// <para>
+    /// Computed the same way the stitcher computes it, via
+    /// <see cref="Planning.SplicePlanner.EffectiveTransition"/>: a transition longer than half the
+    /// shortest clip is clamped, because it cannot consume more of a clip than the clip has.
+    /// Subtracting the requested duration unclamped makes the summary and the manifest under-report
+    /// a render whose clips are shorter than twice the transition, which is exactly the case a
+    /// reader would be checking the number for.
+    /// </para>
+    /// </summary>
     public TimeSpan EffectiveDuration
     {
         get
@@ -54,9 +64,11 @@ public sealed record RenderPlan
                 return TotalDuration;
             }
 
-            var overlap = Request.Transition.Duration * (Segments.Count - 1);
-            var result = TotalDuration - overlap;
-            return result > TimeSpan.Zero ? result : TotalDuration;
+            var effective = Planning.SplicePlanner.EffectiveTransition(
+                [.. Segments.Select(s => s.Duration)],
+                Request.Transition.Duration);
+
+            return TotalDuration - (effective * (Segments.Count - 1));
         }
     }
 }
