@@ -84,7 +84,7 @@ public abstract class SegmentSelectorBase : ISegmentSelector
             ? Shuffle(picked, context.Random)
             : [.. picked.OrderBy(c => c.SourcePath, StringComparer.Ordinal).ThenBy(c => c.Start)];
 
-        return Materialise(ordered, context);
+        return Materialize(ordered, context);
     }
 
     /// <summary>Produces the possible start times for one source, each with a desirability score.</summary>
@@ -269,7 +269,7 @@ public abstract class SegmentSelectorBase : ISegmentSelector
         return true;
     }
 
-    private static List<Segment> Materialise(
+    private static List<Segment> Materialize(
         List<SegmentCandidate> ordered,
         SelectionContext context)
     {

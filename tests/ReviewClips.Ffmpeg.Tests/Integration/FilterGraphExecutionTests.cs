@@ -52,7 +52,7 @@ public class FilterGraphExecutionTests
 
             // Mirrors what the extractor does, so the graph under test is the real one.
             AttributionTextPath = look.HasAttribution
-                ? TextResources.Materialise(look.Attribution!.Trim())
+                ? TextResources.Materialize(look.Attribution!.Trim())
                 : null,
         };
 

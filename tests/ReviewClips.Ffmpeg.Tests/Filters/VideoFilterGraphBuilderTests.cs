@@ -85,7 +85,7 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void ToneMap_StatesInputColourCharacteristicsExplicitly()
+    public void ToneMap_StatesInputColorCharacteristicsExplicitly()
     {
         // Leaving these implicit makes zscale fail on files with partial colour metadata.
         var graph = Build(Context(Source(colorTransfer: "smpte2084")));
@@ -270,7 +270,7 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void Look_AppliesDarkeningBeforeColourAdjustments()
+    public void Look_AppliesDarkeningBeforeColorAdjustments()
     {
         var graph = Build(Context(look: new LookOptions { Darken = 0.4, Saturation = 0.7 }));
 

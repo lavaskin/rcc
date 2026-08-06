@@ -28,8 +28,12 @@ public sealed record RenderPlan
     /// <summary>Number of clips that will actually be cut, ignoring repeats.</summary>
     public int DistinctClipCount => Planning.ClipSequencer.CountDistinct(Segments);
 
-    /// <summary>Total source footage consumed, counting each distinct clip once.</summary>
-    public TimeSpan DistinctSourceDuration => Planning.ClipSequencer.DistinctSourceDuration(Segments);
+    /// <summary>
+    /// Total source footage consumed, counting each distinct clip once. Read off
+    /// <see cref="SourceUsage"/> rather than computed again, so the summary's figure and the
+    /// guardrail's are the same number by construction.
+    /// </summary>
+    public TimeSpan DistinctSourceDuration => SourceUsage.Used;
 
     /// <summary>
     /// What share of the supplied footage this render consumes. Derived rather than stored so

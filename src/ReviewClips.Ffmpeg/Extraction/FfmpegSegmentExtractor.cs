@@ -116,7 +116,7 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             // Content-addressed, so the many parallel extractions of one render all resolve to
             // the same file and write it at most once.
             AttributionTextPath = look.HasAttribution
-                ? TextResources.Materialise(look.Attribution!.Trim())
+                ? TextResources.Materialize(look.Attribution!.Trim())
                 : null,
         };
 

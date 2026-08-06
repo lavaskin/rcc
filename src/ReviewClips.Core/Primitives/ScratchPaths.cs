@@ -31,7 +31,7 @@ public static class ScratchPaths
     /// <summary>Working directories for in-progress renders. One subdirectory per render.</summary>
     public static string Work => Path.Combine(Root, "work");
 
-    /// <summary>Materialised <c>drawtext</c> text files, which outlive a render on purpose.</summary>
+    /// <summary>Materialized <c>drawtext</c> text files, which outlive a render on purpose.</summary>
     public static string Text => Path.Combine(Root, "text");
 
     private const UnixFileMode OwnerOnly =

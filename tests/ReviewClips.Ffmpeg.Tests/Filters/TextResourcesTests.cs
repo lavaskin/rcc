@@ -18,20 +18,20 @@ public class TextResourcesTests
     {
         const string Text = "Clip from Heat (1995), dir. Michael Mann";
 
-        TextResources.Materialise(Text).ShouldBe(TextResources.Materialise(Text));
+        TextResources.Materialize(Text).ShouldBe(TextResources.Materialize(Text));
     }
 
     [Fact]
     public void DifferentTextResolvesToDifferentPaths() =>
-        TextResources.Materialise("Clip from Heat (1995)")
-            .ShouldNotBe(TextResources.Materialise("Clip from Ronin (1998)"));
+        TextResources.Materialize("Clip from Heat (1995)")
+            .ShouldNotBe(TextResources.Materialize("Clip from Ronin (1998)"));
 
     [Fact]
     public void TheFileHoldsExactlyTheTextGiven()
     {
         const string Text = "Clip from Amelie (2001)";
 
-        var bytes = File.ReadAllBytes(TextResources.Materialise(Text));
+        var bytes = File.ReadAllBytes(TextResources.Materialize(Text));
 
         // Fully qualified: this project has its own Encoding namespace, shadowing System.Text.
         System.Text.Encoding.UTF8.GetString(bytes).ShouldBe(Text);
@@ -42,7 +42,7 @@ public class TextResourcesTests
     {
         // drawtext renders a BOM as a visible glyph, so a caption would silently gain a box in
         // front of it. Only a non-ASCII title makes a careless encoder choice show up at all.
-        var bytes = File.ReadAllBytes(TextResources.Materialise("Le Fabuleux Destin d'Amélie"));
+        var bytes = File.ReadAllBytes(TextResources.Materialize("Le Fabuleux Destin d'Amélie"));
 
         bytes.Length.ShouldBeGreaterThan(3);
         (bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF).ShouldBeFalse();
@@ -55,16 +55,16 @@ public class TextResourcesTests
         // nothing may be escaped on the way in either.
         const string Text = "100% [practical] effects: no CGI, 'honest', back\\slash {here}";
 
-        File.ReadAllText(TextResources.Materialise(Text)).ShouldBe(Text);
+        File.ReadAllText(TextResources.Materialize(Text)).ShouldBe(Text);
     }
 
     [Fact]
     public void EmptyTextIsAllowedRatherThanThrowing() =>
-        File.Exists(TextResources.Materialise(string.Empty)).ShouldBeTrue();
+        File.Exists(TextResources.Materialize(string.Empty)).ShouldBeTrue();
 
     [Fact]
     public void NullTextIsRejected() =>
-        Should.Throw<ArgumentNullException>(() => TextResources.Materialise(null!));
+        Should.Throw<ArgumentNullException>(() => TextResources.Materialize(null!));
 
     [Fact]
     public void ATruncatedFileIsRewrittenRatherThanReused()
@@ -74,10 +74,10 @@ public class TextResourcesTests
         // clue as to why.
         const string Text = "Clip from The Insider (1999), dir. Michael Mann";
 
-        var path = TextResources.Materialise(Text);
+        var path = TextResources.Materialize(Text);
         File.WriteAllText(path, "trunc");
 
-        var recovered = TextResources.Materialise(Text);
+        var recovered = TextResources.Materialize(Text);
 
         recovered.ShouldBe(path);
         File.ReadAllText(recovered).ShouldBe(Text);
@@ -98,7 +98,7 @@ public class TextResourcesTests
 
         try
         {
-            var ex = Should.Throw<IOException>(() => TextResources.Materialise(text));
+            var ex = Should.Throw<IOException>(() => TextResources.Materialize(text));
 
             ex.Message.ShouldContain(path);
             ex.InnerException.ShouldNotBeNull();
@@ -118,7 +118,7 @@ public class TextResourcesTests
 
         try
         {
-            Should.Throw<IOException>(() => TextResources.Materialise(text));
+            Should.Throw<IOException>(() => TextResources.Materialize(text));
 
             Directory.GetFiles(TextResources.DirectoryPath(), Path.GetFileName(path) + ".*.tmp")
                 .ShouldBeEmpty();
@@ -138,7 +138,7 @@ public class TextResourcesTests
         var text = $"Clip from Collateral (2004) {Guid.NewGuid():N}";
 
         var paths = new string[32];
-        Parallel.For(0, paths.Length, i => paths[i] = TextResources.Materialise(text));
+        Parallel.For(0, paths.Length, i => paths[i] = TextResources.Materialize(text));
 
         paths.Distinct(StringComparer.Ordinal).ShouldHaveSingleItem();
         File.ReadAllText(paths[0]).ShouldBe(text);
@@ -150,7 +150,7 @@ public class TextResourcesTests
         var texts = Enumerable.Range(0, 32).Select(i => $"Caption number {i}").ToArray();
         var paths = new string[texts.Length];
 
-        Parallel.For(0, texts.Length, i => paths[i] = TextResources.Materialise(texts[i]));
+        Parallel.For(0, texts.Length, i => paths[i] = TextResources.Materialize(texts[i]));
 
         paths.Distinct(StringComparer.Ordinal).Count().ShouldBe(texts.Length);
 
@@ -186,7 +186,7 @@ public class TextResourcesTests
     [Fact]
     public void SweepLeavesFilesThatAreStillFresh()
     {
-        var path = TextResources.Materialise($"Fresh caption {Guid.NewGuid():N}");
+        var path = TextResources.Materialize($"Fresh caption {Guid.NewGuid():N}");
 
         TextResources.Sweep();
 
@@ -198,7 +198,7 @@ public class TextResourcesTests
     [Fact]
     public void SweepRemovesFilesThatHaveGoneStale()
     {
-        var path = TextResources.Materialise($"Stale caption {Guid.NewGuid():N}");
+        var path = TextResources.Materialize($"Stale caption {Guid.NewGuid():N}");
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromDays(30));
 
         TextResources.Sweep().ShouldBeGreaterThan(0);
@@ -212,5 +212,29 @@ public class TextResourcesTests
         // Nothing has necessarily ever been materialised when doctor --clear-cache runs.
         TextResources.Sweep();
         TextResources.Sweep().ShouldBeGreaterThanOrEqualTo(0);
+    }
+
+    /// <summary>
+    /// Reuse has to count as use, or the age records when a caption was first written rather than
+    /// when it was last needed. A credit line used in every render for a year would otherwise be
+    /// swept seven days in — and, worse, could be swept out from under the render using it, since
+    /// reuse is precisely the path that does not rewrite the file.
+    /// </summary>
+    [Fact]
+    public void ReusingAFileMarksItAsUsed()
+    {
+        var text = $"Reused caption {Guid.NewGuid():N}";
+        var path = TextResources.Materialize(text);
+
+        // Old enough that the next sweep would take it.
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromDays(30));
+
+        TextResources.Materialize(text).ShouldBe(path);
+
+        File.GetLastWriteTimeUtc(path)
+            .ShouldBeGreaterThan(DateTime.UtcNow - TimeSpan.FromMinutes(1));
+
+        TextResources.Sweep();
+        File.Exists(path).ShouldBeTrue("a file just reused must survive the sweep");
     }
 }

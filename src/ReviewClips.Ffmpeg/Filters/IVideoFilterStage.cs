@@ -45,7 +45,7 @@ public static class FilterStageOrder
 
     public const int Mirror = 700;
 
-    /// <summary>Colour grade before creative adjustments so the LUT sees unmodified colour.</summary>
+    /// <summary>Color grade before creative adjustments so the LUT sees unmodified colour.</summary>
     public const int Lut = 800;
 
     /// <summary>Brightness, contrast and saturation.</summary>

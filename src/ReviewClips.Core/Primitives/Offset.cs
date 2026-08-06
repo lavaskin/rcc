@@ -27,8 +27,17 @@ public readonly record struct Offset
     /// <summary>
     /// True when this offset trims nothing, whichever form it was given in.
     /// <c>0s</c> and <c>0%</c> are distinct values but the same instruction.
+    /// <para>
+    /// A default-constructed <see cref="Offset"/> holds neither form and also trims nothing, so it
+    /// counts too. It cannot arrive from the command line, where both parse paths produce one or
+    /// the other, but <c>SelectionOptions</c> can be built directly and
+    /// <c>EligibilityDiagnostics</c> reads this to decide whether the trims are worth blaming for
+    /// an empty selection — which it would get exactly backwards.
+    /// </para>
     /// </summary>
-    public bool IsZero => Absolute is { Ticks: <= 0 } || Fraction <= 0d;
+    public bool IsZero => Absolute is { Ticks: <= 0 }
+        || Fraction <= 0d
+        || (Absolute is null && Fraction is null);
 
     public static Offset FromTime(TimeSpan value) => new(value, null);
 

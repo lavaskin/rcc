@@ -5,7 +5,7 @@ using ReviewClips.Core.Primitives;
 namespace ReviewClips.Ffmpeg.Filters;
 
 /// <summary>
-/// Materialises burned-in text as a file for <c>drawtext</c>'s <c>textfile=</c> option.
+/// Materializes burned-in text as a file for <c>drawtext</c>'s <c>textfile=</c> option.
 /// <para>
 /// Named by a hash of its own contents, which makes the whole thing free of coordination: every
 /// parallel extraction asks for the same text and gets the same path, a re-run reuses the file
@@ -19,7 +19,13 @@ namespace ReviewClips.Ffmpeg.Filters;
 /// since the fast path below trusts an existing file by name and length alone, that would let
 /// somebody else choose what your credit line says. Note the name is deliberately predictable —
 /// reuse between runs depends on it — so the protection is the directory's permissions, not its
-/// name. <see cref="Sweep"/> keeps it from growing without bound.
+/// name.
+/// </para>
+/// <para>
+/// <see cref="Sweep"/> is what keeps the directory from growing without bound. It runs after any
+/// render that burned in text, and from <c>rcc doctor --clear-cache</c>. Both matter: the first
+/// is what makes it automatic, and the second is what reaches a directory left behind by a
+/// version that did not do the first.
 /// </para>
 /// </summary>
 public static class TextResources
@@ -27,13 +33,18 @@ public static class TextResources
     /// <summary>How long an unused text file survives a <see cref="Sweep"/>.</summary>
     private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
 
+    /// <summary>Guards <see cref="SweepOnce"/>; 1 once a sweep has been started this process.</summary>
+    private static int _swept;
+
     /// <summary>Writes <paramref name="text"/> to a content-addressed file and returns its path.</summary>
-    public static string Materialise(string text)
+    public static string Materialize(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
 
         var directory = ScratchPaths.EnsureDirectory(DirectoryPath());
         var path = Path.Combine(directory, NameFor(text) + ".txt");
+
+        SweepOnce();
 
         // UTF-8 without a BOM: drawtext renders the byte order mark as a visible glyph.
         var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
@@ -43,6 +54,12 @@ public static class TextResources
         // truncated file that this would otherwise reuse silently for ever.
         if (IsIntact(path, bytes.Length))
         {
+            // Reuse counts as use. Without this the timestamp records when the caption was first
+            // written, so a credit line used in every render for a year would still be swept
+            // seven days in -- and, worse, could be swept out from under a render that is using
+            // it right now. Touching it makes the age mean "unused for MaxAge", which is both
+            // what Sweep documents and what makes it safe to run concurrently with a render.
+            TryTouch(path);
             return path;
         }
 
@@ -114,6 +131,40 @@ public static class TextResources
         return removed;
     }
 
+    /// <summary>
+    /// Sweeps in the background, at most once per process.
+    /// <para>
+    /// Called from <see cref="Materialize"/> so tidying happens without anybody having to
+    /// remember it: these files outlive the render on purpose, nothing else removes them, and
+    /// leaving it to <c>doctor --clear-cache</c> meant in practice that it never ran at all.
+    /// </para>
+    /// <para>
+    /// Fire-and-forget, and failure is ignored. Housekeeping must not delay a render, and a
+    /// render must not fail because housekeeping could not. Safe to run alongside the extraction
+    /// that triggered it because <see cref="Materialize"/> touches every file it reuses, so
+    /// nothing in use is old enough to be swept.
+    /// </para>
+    /// </summary>
+    private static void SweepOnce()
+    {
+        if (Interlocked.Exchange(ref _swept, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(static () =>
+        {
+            try
+            {
+                Sweep();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Already swallowed per file inside Sweep; this is only for enumeration itself.
+            }
+        });
+    }
+
     /// <summary>Where the text files live. Per-user and owner-only; see <see cref="ScratchPaths"/>.</summary>
     public static string DirectoryPath() => ScratchPaths.Text;
 
@@ -147,6 +198,21 @@ public static class TextResources
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return [];
+        }
+    }
+
+    /// <summary>
+    /// Marks a file as used. Best-effort: a filesystem that refuses the update costs nothing
+    /// worse than an early sweep, which rewrites the file next time it is needed.
+    /// </summary>
+    private static void TryTouch(string path)
+    {
+        try
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 

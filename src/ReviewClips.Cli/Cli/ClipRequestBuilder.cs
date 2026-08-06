@@ -132,13 +132,17 @@ internal sealed class ClipRequestBuilder
             Gamma = parse.GetValue(_options.Gamma) ?? request.Look.Gamma,
 
             // An explicit --saturation settles the grayscale question by itself: asking for a
-            // specific amount of colour is incompatible with asking for none, and the typed
+            // specific amount of color is incompatible with asking for none, and the typed
             // value is the more recent instruction. Resolving it here rather than leaving both
             // set means the request that reaches the renderer, the summary and the manifest
             // holds no contradiction for any of them to resolve differently.
-            Grayscale = parse.GetResult(_options.Saturation) is not null
-                ? false
-                : Toggle(parse, _options.Grayscale, _options.NoGrayscale, request.Look.Grayscale),
+            //
+            // Toggle still runs first, and is not short-circuited past. It is the thing that
+            // refuses --grayscale alongside --no-grayscale, and that pair is a contradiction
+            // whatever --saturation goes on to decide -- silently accepting it here while every
+            // other --no- pair is refused would be the odd one out.
+            Grayscale = Toggle(parse, _options.Grayscale, _options.NoGrayscale, request.Look.Grayscale)
+                && parse.GetResult(_options.Saturation) is null,
             Blur = parse.GetValue(_options.Blur) ?? request.Look.Blur,
             Sharpen = parse.GetValue(_options.Sharpen) ?? request.Look.Sharpen,
             Pixelate = parse.GetValue(_options.Pixelate) ?? request.Look.Pixelate,

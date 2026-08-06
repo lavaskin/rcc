@@ -90,7 +90,7 @@ chaptered sources, removes the mask entirely.
 - `Selection/SelectionContext.cs` — add `SpeedFactor = 1d`; `LongestSegment` multiplies by it.
   That one line reaches everything that was wrong: `EligibleRanges`, `CanFit`, and the
   never-relaxed non-overlap floor `preferredGap = window`.
-- `Selection/SegmentSelectorBase.cs` — `Materialise` sets `SpeedFactor` from the context.
+- `Selection/SegmentSelectorBase.cs` — `Materialize` sets `SpeedFactor` from the context.
 - `Selection/CueDrivenSegmentSelector.cs` — source-end clamp becomes
   `min(perCue, available / speed)`; set `SpeedFactor`.
 - `Pipeline/RenderPipeline.cs` — set `SpeedFactor = request.Look.Speed` on the context. Single writer.

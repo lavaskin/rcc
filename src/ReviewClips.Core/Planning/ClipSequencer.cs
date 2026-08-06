@@ -178,28 +178,6 @@ public static class ClipSequencer
             .Count();
     }
 
-    /// <summary>
-    /// How much of the source material was actually used.
-    /// <para>
-    /// Computed as the union of the referenced time ranges, not the sum of clip lengths, so
-    /// repeats and any overlap between clips are each counted once. This is the number that
-    /// answers "how much of this film is in my video".
-    /// </para>
-    /// </summary>
-    public static TimeSpan DistinctSourceDuration(IEnumerable<Segment> segments)
-    {
-        ArgumentNullException.ThrowIfNull(segments);
-
-        var total = TimeSpan.Zero;
-
-        foreach (var bySource in segments.GroupBy(s => s.SourcePath, StringComparer.Ordinal))
-        {
-            total += TimeRangeSet.From(bySource.Select(s => s.Range)).TotalDuration;
-        }
-
-        return total;
-    }
-
     private static bool IsSameClip(Segment a, Segment b) =>
         string.Equals(a.SourcePath, b.SourcePath, StringComparison.Ordinal)
         && a.Start == b.Start;

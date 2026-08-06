@@ -267,4 +267,55 @@ public class SourceUsageGuardTests
         report.Used.ShouldBe(TimeSpan.Zero);
         report.ExceedsLimit.ShouldBeFalse();
     }
+
+    /// <summary>
+    /// The union arithmetic, which used to live in <c>ClipSequencer.DistinctSourceDuration</c> as
+    /// well. Two implementations of one measurement is one too many when both feed the same
+    /// summary, so the plan now reads this and these came with it.
+    /// </summary>
+    [Fact]
+    public void RepeatedFootageIsCountedOnce()
+    {
+        var pool = Enumerable.Range(0, 10).Select(i => Clip(100 + (i * 60))).ToList();
+        var repeated = pool.Concat(pool).Concat(pool);
+
+        // 10 clips of 5s regardless of how many times they appear.
+        Evaluate(repeated, 2000).Used.TotalSeconds.ShouldBe(50d, 0.0001);
+    }
+
+    [Fact]
+    public void OverlappingClipsAreMerged()
+    {
+        var a = Clip(100, 10);
+        var overlapping = a with { Start = TimeSpan.FromSeconds(105) };
+
+        // 100-110 and 105-115 cover 15s of footage, not 20s.
+        Evaluate([a, overlapping], 2000).Used.TotalSeconds.ShouldBe(15d, 0.0001);
+    }
+
+    [Fact]
+    public void IdenticalTimestampsInDifferentFilesAreDifferentFootage()
+    {
+        var a = Clip(100, 5, "/movies/a.mkv");
+        var b = Clip(100, 5, "/movies/b.mkv");
+
+        SourceUsageGuard.Evaluate(
+                [a, b],
+                [("/movies/a.mkv", TimeSpan.FromSeconds(200)), ("/movies/b.mkv", TimeSpan.FromSeconds(200))],
+                limit: 0d)
+            .Used.TotalSeconds
+            .ShouldBe(10d, 0.0001);
+    }
+
+    /// <summary>
+    /// A retimed clip consumes more source than it plays back as, and this is the measurement
+    /// that answers how much of a work was used.
+    /// </summary>
+    [Fact]
+    public void ARetimedClipIsMeasuredByTheFootageItReads()
+    {
+        var doubled = Clip(100, 5) with { SpeedFactor = 2d };
+
+        Evaluate([doubled], 200).Used.TotalSeconds.ShouldBe(10d, 0.0001);
+    }
 }

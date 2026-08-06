@@ -189,48 +189,4 @@ public class ClipSequencerTests
         // The pool size is what --max-clips controls; a shortened copy is not a new clip.
         ClipSequencer.CountDistinct([.. pool, trimmed]).ShouldBe(3);
     }
-
-    [Fact]
-    public void DistinctSourceDuration_CountsRepeatedFootageOnce()
-    {
-        var pool = Pool(10);
-        var repeated = pool.Concat(pool).Concat(pool).ToList();
-
-        // 10 clips of 5s regardless of how many times they appear.
-        ClipSequencer.DistinctSourceDuration(repeated).TotalSeconds.ShouldBe(50d, 0.0001);
-    }
-
-    [Fact]
-    public void DistinctSourceDuration_MergesOverlappingClips()
-    {
-        var a = new Segment
-        {
-            SourcePath = "/movies/film.mkv",
-            Start = TimeSpan.FromSeconds(100),
-            Duration = TimeSpan.FromSeconds(10),
-        };
-
-        var overlapping = a with { Start = TimeSpan.FromSeconds(105) };
-
-        // 100-110 and 105-115 cover 15s of footage, not 20s.
-        ClipSequencer.DistinctSourceDuration([a, overlapping])
-            .TotalSeconds
-            .ShouldBe(15d, 0.0001);
-    }
-
-    [Fact]
-    public void DistinctSourceDuration_KeepsSourcesSeparate()
-    {
-        var a = new Segment
-        {
-            SourcePath = "/movies/a.mkv",
-            Start = TimeSpan.FromSeconds(100),
-            Duration = TimeSpan.FromSeconds(5),
-        };
-
-        var b = a with { SourcePath = "/movies/b.mkv" };
-
-        // Identical timestamps in different files are different footage.
-        ClipSequencer.DistinctSourceDuration([a, b]).TotalSeconds.ShouldBe(10d, 0.0001);
-    }
 }

@@ -657,7 +657,28 @@ public sealed class EnvironmentInspector
 
         try
         {
-            var result = await _runner.RunFfmpegAsync(arguments, cancellationToken);
+            // Bounded like the encoder probes, and for a reason of its own: with no fontfile
+            // pinned this goes through fontconfig, which builds its cache on first use. On an
+            // image where that cache is cold and the font path is large it is the slowest thing
+            // doctor does, and an unbounded wait here would hang the command it exists to
+            // diagnose with.
+            var result = await WithTimeoutAsync(
+                token => _runner.RunFfmpegAsync(arguments, token),
+                onTimeout: (FfmpegRunResult?)null,
+                map: r => (FfmpegRunResult?)r,
+                cancellationToken);
+
+            if (result is null)
+            {
+                return new TextRenderStatus
+                {
+                    FilterPresent = true,
+                    Usable = false,
+                    Error = $"drawtext did not respond within {ProbeTimeout.TotalSeconds:0}s, "
+                        + "which usually means fontconfig is building its cache or cannot read a "
+                        + "font directory.",
+                };
+            }
 
             return new TextRenderStatus
             {
