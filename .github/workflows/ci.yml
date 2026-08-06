@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+# A new push to a PR makes the in-flight run obsolete. Never cancel on master,
+# so the merge-commit history keeps a result for every commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # No packages.lock.json, so setup-dotnet's built-in cache cannot be used.
+      # Key on the central package manifest plus every csproj instead.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # The integration suite synthesizes its own media with lavfi, so it needs a
+      # real FFmpeg but no sample files. fonts-dejavu-core is what lets drawtext
+      # resolve a family; without it the caption tests silently skip themselves.
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          ffmpeg -version | head -1
+
+      - name: Restore
+        run: dotnet restore ReviewClips.slnx
+
+      # TreatWarningsAsErrors and EnforceCodeStyleInBuild are set in
+      # Directory.Build.props, so this step is also the lint gate.
+      - name: Build
+        run: dotnet build ReviewClips.slnx --configuration Release --no-restore
+
+      # Whitespace, file encoding and naming, which the compiler does not report even
+      # with EnforceCodeStyleInBuild. Runs after Build so a genuine compile error is
+      # reported as a compile error rather than as a wall of formatting noise.
+      - name: Verify formatting
+        run: dotnet format ReviewClips.slnx --verify-no-changes --verbosity minimal
+
+      - name: Test
+        run: dotnet test ReviewClips.slnx --configuration Release --no-build
+
+      # Catches failures that only appear at startup — DI wiring, command tree
+      # construction — which a unit test over the same types will not.
+      - name: Smoke test the CLI
+        run: |
+          ./src/ReviewClips.Cli/bin/Release/net10.0/rcc --version
+          ./src/ReviewClips.Cli/bin/Release/net10.0/rcc doctor
