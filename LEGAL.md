@@ -25,7 +25,7 @@ dealing versus fair use. Consult a lawyer for your specific situation.
 | "Muting it makes it fine." | Partly. Muting removes the sound-recording claim. The audiovisual work is separately protected. |
 | "Darkening or blurring makes it fine." | False. A derivative of an infringing copy is still infringing. |
 | "Trailers are legally different." | False. Trailers are studio-owned and fully protected. Enforcement is rarer, which is a difference in practice, not in law. |
-| "Crediting the source makes it fine." | False. Attribution is not a licence and is not a fair-use factor. |
+| "Crediting the source makes it fine." | False. Attribution is not a license and is not a fair-use factor. |
 
 ## Purpose matters more than length
 
@@ -49,9 +49,9 @@ than a bounded selection.
 ## Acquisition is a separate issue
 
 Circumventing disc encryption (AACS, CSS) violates DMCA §1201 independently of fair use. A
-successful fair-use defence does not resolve a §1201 claim; they are separate causes of action.
+successful fair-use defense does not resolve a §1201 claim; they are separate causes of action.
 
-Downloading from unauthorised sources is direct infringement of the reproduction right, regardless
+Downloading from unauthorized sources is direct infringement of the reproduction right, regardless
 of what the copy is subsequently used for.
 
 Screen-recording a stream you subscribe to generally avoids the §1201 circumvention question, since
@@ -65,7 +65,7 @@ argument affects whether a match occurs.
 
 | | |
 |---|---|
-| Typical outcome of a match | A claim redirecting monetisation to the rights holder. |
+| Typical outcome of a match | A claim redirecting monetization to the rights holder. |
 | Severity | Low. Not a copyright strike; does not affect channel standing. |
 | Dispute path | Available, but reviewed by the claimant in the first instance. |
 | Higher-severity risk | A manual takedown from the rights holder, which is a strike. |

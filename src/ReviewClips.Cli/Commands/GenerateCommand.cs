@@ -42,6 +42,19 @@ internal sealed class GenerateCommand
 
         var plan = await pipeline.PlanAsync(request, observer, cancellationToken);
 
+        // Named after planning, because the derived name states the render's duration and
+        // --match-audio takes that duration from the audio track.
+        plan = plan with
+        {
+            Request = ClipRequestBuilder.EnsureOutputPath(
+                plan.Request,
+                parse.GetValue(_options.Profile)),
+        };
+
+        // The plan's request supersedes the built one from here on: it carries the settled
+        // duration and the resolved output path.
+        request = plan.Request;
+
         PlanPrinter.PrintSummary(console, plan);
 
         if (request.DryRun)

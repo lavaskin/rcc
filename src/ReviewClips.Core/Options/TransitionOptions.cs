@@ -2,13 +2,13 @@ namespace ReviewClips.Core.Options;
 
 public enum TransitionKind
 {
-    /// <summary>Hard cuts. Allows the whole stitch to be a stream copy, which is effectively instant.</summary>
+    /// <summary>Hard cuts. Lets the whole stitch be a stream copy.</summary>
     None,
 
     /// <summary>Direct cross-dissolve between segments.</summary>
     Fade,
 
-    /// <summary>Fade down to black and back up. Reads as a deliberate edit rather than a glitch.</summary>
+    /// <summary>Fade down to black and back up.</summary>
     DipToBlack,
 
     /// <summary>Fade through white.</summary>

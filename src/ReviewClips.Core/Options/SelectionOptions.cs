@@ -44,14 +44,13 @@ public enum SegmentOrder
 /// <summary>
 /// Tuning for <see cref="SelectionStrategy.Scored"/>.
 /// <para>
-/// All motion thresholds are expressed as multiples of the title's own median motion, not as
-/// absolute numbers. A slow drama and a Michael Bay film have wildly different absolute
-/// frame-difference values, so normalising per-title is what makes one default work for both.
+/// Motion thresholds are multiples of the title's own median motion, not absolute
+/// frame-difference values, so one set of defaults works across titles of any pace.
 /// </para>
 /// </summary>
 public sealed record ScoringOptions
 {
-    /// <summary>Ideal motion level as a multiple of the title's median. Around 1.25x reads as "alive but not chaotic".</summary>
+    /// <summary>Ideal motion level as a multiple of the title's median.</summary>
     public double TargetMotionMultiple { get; init; } = 1.25d;
 
     /// <summary>Reject windows quieter than this multiple of the median (near-static shots).</summary>
@@ -61,7 +60,7 @@ public sealed record ScoringOptions
     public double MotionCeilingMultiple { get; init; } = 4.0d;
 
     /// <summary>
-    /// How strongly to penalise uneven windows. High variance usually means the window
+    /// How strongly to penalize uneven windows. High variance usually means the window
     /// straddles a cut or contains a flash.
     /// </summary>
     public double StabilityWeight { get; init; } = 0.35d;
@@ -71,13 +70,13 @@ public sealed record SelectionOptions
 {
     public SelectionStrategy Strategy { get; init; } = SelectionStrategy.Scored;
 
-    /// <summary>Seed for reproducible renders. When null a random seed is generated and recorded in the manifest.</summary>
+    /// <summary>Seed for reproducible renders. Null generates one and records it in the manifest.</summary>
     public int? Seed { get; init; }
 
-    /// <summary>Skipped from the start of every source. Defaults to 5% to clear studio logos and opening titles.</summary>
+    /// <summary>Skipped from the start of every source, to clear logos and opening titles.</summary>
     public Offset SkipHead { get; init; } = Offset.FromPercent(5);
 
-    /// <summary>Skipped from the end of every source. Defaults to 8% to clear end credits.</summary>
+    /// <summary>Skipped from the end of every source, to clear end credits.</summary>
     public Offset SkipTail { get; init; } = Offset.FromPercent(8);
 
     /// <summary>When non-empty, only these ranges are eligible.</summary>
@@ -87,20 +86,20 @@ public sealed record SelectionOptions
     public IReadOnlyList<TimeRange> ExcludeRanges { get; init; } = [];
 
     /// <summary>
-    /// Whether the built-in intro and credits chapter titles are skipped. On by default: where a
-    /// source names its chapters, they locate that material exactly, which is what
-    /// <see cref="SkipHead"/> and <see cref="SkipTail"/> can only approximate.
+    /// Whether the built-in intro and credits chapter titles are skipped. On by default: named
+    /// chapters locate that material exactly, where <see cref="SkipHead"/> and
+    /// <see cref="SkipTail"/> can only approximate it.
     /// </summary>
     public ChapterSkipMode ChapterSkip { get; init; } = ChapterSkipMode.Auto;
 
     /// <summary>
-    /// Extra chapter title patterns to skip, always honoured regardless of
+    /// Extra chapter title patterns to skip, always honored regardless of
     /// <see cref="ChapterSkip"/>. Matched as case-insensitive substrings, or as globs when the
     /// pattern contains <c>*</c> or <c>?</c>.
     /// </summary>
     public IReadOnlyList<string> SkipChapterPatterns { get; init; } = [];
 
-    /// <summary>Minimum spacing between the starts of two chosen segments, so clips don't come from the same moment.</summary>
+    /// <summary>Minimum spacing between the starts of two chosen segments.</summary>
     public TimeSpan MinGap { get; init; } = TimeSpan.FromSeconds(20);
 
     /// <summary>Skip stretches detected as fades to black.</summary>
@@ -118,7 +117,7 @@ public sealed record SelectionOptions
     /// <summary>Explicit timestamps for <see cref="SelectionStrategy.Cues"/>.</summary>
     public IReadOnlyList<TimeSpan> Cues { get; init; } = [];
 
-    /// <summary>Snap each cue back to the start of the shot containing it, so clips open on a clean shot.</summary>
+    /// <summary>Snap each cue back to the start of the shot containing it.</summary>
     public bool SnapCuesToScene { get; init; } = true;
 
     public ScoringOptions Scoring { get; init; } = new();
@@ -127,9 +126,8 @@ public sealed record SelectionOptions
     public int CandidateDensity { get; init; } = 400;
 
     /// <summary>
-    /// Order of segments in the finished render. Shuffled by default: replaying a film's
-    /// shots in their original sequence looks more like a condensed copy of the work,
-    /// and reads worse as background footage.
+    /// Order of segments in the finished render. Shuffled by default: original sequence reads as
+    /// a condensed copy of the work rather than as background footage.
     /// </summary>
     public SegmentOrder Order { get; init; } = SegmentOrder.Shuffled;
 

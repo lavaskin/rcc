@@ -43,10 +43,7 @@ internal static class PlanPrinter
                 : $"{distinct} distinct x ~{averageClip:0.#}s, "
                   + $"repeated to fill {slots} slots ({plan.RepeatFactor:0.#}x)");
 
-        table.AddRow(
-            "Source used",
-            $"{plan.DistinctSourceDuration.TotalSeconds:0.#}s of footage"
-            + (distinct == slots ? string.Empty : $" (vs {plan.TotalDuration.TotalSeconds:0.#}s of screen time)"));
+        table.AddRow("Source used", DescribeUsage(plan));
         table.AddRow("Strategy", $"{request.Selection.Strategy} (seed {plan.Seed})");
 
         // Only worth a row when the sources actually carry markers.
@@ -61,7 +58,7 @@ internal static class PlanPrinter
         table.AddRow(
             "Encoder",
             $"{plan.Encoder.VideoEncoder} ({(plan.Encoder.IsHardware ? "hardware" : "software")}), q={request.Encoder.Quality}");
-        table.AddRow("Audio", request.Mute ? "muted" : "kept");
+        table.AddRow("Audio", DescribeAudio(request.Audio));
 
         console.Write(table);
 
@@ -135,11 +132,10 @@ internal static class PlanPrinter
     }
 
     /// <summary>
-    /// Summarizes what chapter filtering did, or null when no source has chapters. Reports the
-    /// excluded titles by name: a silent exclusion of ten minutes of a film is exactly the kind
-    /// of thing that should not be invisible.
+    /// Summarizes what chapter filtering did, or null when no source has chapters. Excluded titles
+    /// are named rather than counted, so the exclusion is never silent.
     /// </summary>
-    private static string? DescribeChapters(RenderPlan plan)
+    internal static string? DescribeChapters(RenderPlan plan)
     {
         var total = plan.Sources.Sum(s => s.Info.Chapters.Count);
         if (total == 0)
@@ -155,6 +151,13 @@ internal static class PlanPrinter
 
         if (skipped.Count == 0)
         {
+            // "none matched" would be a lie when matching never ran: --chapters off with no
+            // --skip-chapter leaves no patterns at all, so the two cases must read differently.
+            if (patterns.Count == 0)
+            {
+                return $"{total} marker(s), skipping disabled (--chapters off)";
+            }
+
             return plan.Sources.Any(s => s.Info.HasNamedChapters)
                 ? $"{total} marker(s), none matched as intro or credits"
                 : $"{total} unnamed marker(s), nothing to match against";
@@ -180,6 +183,30 @@ internal static class PlanPrinter
             + $"({excluded.TotalSeconds:0.#}s): {named}");
     }
 
+    /// <summary>
+    /// The source-usage row. The percentage quoted is the peak across sources, matching what the
+    /// guardrail tests, so a warning can never cite a figure the summary did not show; with
+    /// several sources the heaviest is named.
+    /// </summary>
+    private static string DescribeUsage(RenderPlan plan)
+    {
+        var usage = plan.SourceUsage;
+        var screenTime = plan.DistinctClipCount == plan.Segments.Count
+            ? string.Empty
+            : $" (vs {plan.TotalDuration.TotalSeconds:0.#}s of screen time)";
+
+        if (usage.Peak is not { } peak || peak.Available <= TimeSpan.Zero)
+        {
+            return $"{usage.Used.TotalSeconds:0.#}s of footage{screenTime}";
+        }
+
+        var share = usage.Sources.Count > 1
+            ? $", peak {peak.Percent:0.#}% of {Markup.Escape(Path.GetFileName(peak.Path))}"
+            : $", {peak.Percent:0.#}% of the source";
+
+        return $"{usage.Used.TotalSeconds:0.#}s of footage{share}{screenTime}";
+    }
+
     private static string DescribeLook(LookOptions look)
     {
         var parts = new List<string>();
@@ -189,9 +216,15 @@ internal static class PlanPrinter
             parts.Add($"darken {look.Darken:0.##}");
         }
 
-        if (Math.Abs(look.Saturation - 1) > 0.001)
+        // Grayscale replaces the saturation figure rather than joining it. EffectiveSaturation is
+        // read, not look.Saturation, so the summary never names a number the filter graph overrode.
+        if (look.Grayscale)
         {
-            parts.Add($"saturation {look.Saturation:0.##}");
+            parts.Add("grayscale");
+        }
+        else if (Math.Abs(look.EffectiveSaturation - 1) > 0.001)
+        {
+            parts.Add($"saturation {look.EffectiveSaturation:0.##}");
         }
 
         if (Math.Abs(look.Contrast - 1) > 0.001)
@@ -199,9 +232,24 @@ internal static class PlanPrinter
             parts.Add($"contrast {look.Contrast:0.##}");
         }
 
+        if (Math.Abs(look.Gamma - 1) > 0.001)
+        {
+            parts.Add($"gamma {look.Gamma:0.##}");
+        }
+
         if (look.Blur > 0.01)
         {
             parts.Add($"blur {look.Blur:0.##}");
+        }
+
+        if (look.HasSharpen)
+        {
+            parts.Add($"sharpen {look.Sharpen:0.##}");
+        }
+
+        if (look.HasPixelate)
+        {
+            parts.Add($"pixelate {look.Pixelate:0.##}");
         }
 
         if (look.Grain > 0)
@@ -214,9 +262,24 @@ internal static class PlanPrinter
             parts.Add("vignette");
         }
 
+        if (look.HasFadeEdges)
+        {
+            parts.Add($"fade edges {look.FadeEdges.TotalSeconds:0.##}s");
+        }
+
         if (look.Mirror)
         {
             parts.Add("mirror");
+        }
+
+        if (look.FlipVertical)
+        {
+            parts.Add("flip");
+        }
+
+        if (look.HasAttribution)
+        {
+            parts.Add($"attribution ({look.AttributionPosition})");
         }
 
         if (look.HasZoom)
@@ -234,12 +297,39 @@ internal static class PlanPrinter
             parts.Add("lut");
         }
 
-        if (look.OverlayPath is not null)
+        return parts.Count == 0 ? "untouched" : Markup.Escape(string.Join(", ", parts));
+    }
+
+    private static string DescribeAudio(AudioOptions audio)
+    {
+        if (audio.IsMuted)
         {
-            parts.Add("overlay");
+            return "muted";
         }
 
-        return parts.Count == 0 ? "untouched" : Markup.Escape(string.Join(", ", parts));
+        if (!audio.HasExternalTrack)
+        {
+            return "source audio kept";
+        }
+
+        var parts = new List<string> { Path.GetFileName(audio.ExternalPath!) };
+
+        if (audio.Offset > TimeSpan.Zero)
+        {
+            parts.Add($"from {DurationSpec.Format(audio.Offset)}");
+        }
+
+        if (audio.AltersVolume)
+        {
+            parts.Add($"at {audio.Volume:0.##}x");
+        }
+
+        if (audio.MatchDuration)
+        {
+            parts.Add("length matched");
+        }
+
+        return Markup.Escape(string.Join(", ", parts));
     }
 
     private static string DescribeTransition(TransitionOptions transition)

@@ -18,14 +18,13 @@ namespace ReviewClips.Ffmpeg.Analysis;
 /// <c>key: value</c>.
 /// </para>
 /// <para>
-/// Reading this from stdout rather than a temp file is deliberate and load-bearing. FFmpeg
-/// reopens the target of <c>file=</c> in truncate mode whenever the filter graph is
-/// reinitialised, which happens on any mid-stream format change. Files assembled by
-/// concatenation trigger exactly that, and the result is a metadata file containing only the
+/// Reading from stdout rather than a temp file is load-bearing: FFmpeg reopens the target of
+/// <c>file=</c> in truncate mode whenever the filter graph is reinitialized, which any
+/// mid-stream format change triggers — concatenated files routinely do — leaving only the
 /// frames after the final reinit. Streaming is immune, since nothing can be rewound.
 /// </para>
 /// <para>
-/// Frame indices reset on reinitialisation, so only <c>pts_time</c> is trusted for positioning.
+/// Frame indices reset on reinitialization, so only <c>pts_time</c> is trusted for positioning.
 /// </para>
 /// </summary>
 public sealed class MetadataStreamParser

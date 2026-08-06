@@ -37,10 +37,8 @@ public class TimeRangeSetTests
     }
 
     [Fact]
-    public void Subtract_RemovesTheRangeEntirelyWhenFullyCovered()
-    {
+    public void Subtract_RemovesTheRangeEntirelyWhenFullyCovered() =>
         TimeRangeSet.Of(R(10, 20)).Subtract([R(0, 100)]).Count.ShouldBe(0);
-    }
 
     [Fact]
     public void TotalDuration_SumsAllRanges()

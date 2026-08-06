@@ -8,10 +8,9 @@ namespace ReviewClips.Core.Selection;
 /// The default strategy. Prefers shot-aligned windows whose motion sits in a "pleasant"
 /// band and which are evenly paced.
 /// <para>
-/// Every threshold is relative to the title's own median motion, because absolute
-/// frame-difference values differ by an order of magnitude between a slow drama and an
-/// action film. Expect to tune <see cref="ScoringOptions"/> per genre; there is no single
-/// correct value for "interesting".
+/// Every threshold is relative to the title's own median motion: absolute frame-difference
+/// values differ by an order of magnitude between a slow drama and an action film, so
+/// <see cref="ScoringOptions"/> has no single correct value across genres.
 /// </para>
 /// </summary>
 public sealed class ScoredSegmentSelector : SegmentSelectorBase
@@ -100,10 +99,10 @@ public sealed class ScoredSegmentSelector : SegmentSelectorBase
         var target = scoring.TargetMotionMultiple <= 0 ? 1d : scoring.TargetMotionMultiple;
 
         // Peaks at 1.0 when ratio == target, decaying smoothly either side.
-        var normalised = (ratio - target) / target;
-        var score = 1d / (1d + (normalised * normalised));
+        var normalized = (ratio - target) / target;
+        var score = 1d / (1d + (normalized * normalized));
 
-        // Penalise uneven windows: high variance usually means the window straddles a cut
+        // Penalize uneven windows: high variance usually means the window straddles a cut
         // or contains a flash, both of which look like glitches in a background loop.
         var stdDev = motion.StdDevOver(range);
         if (stdDev is not null && mean.Value > double.Epsilon)

@@ -3,9 +3,8 @@ using ReviewClips.Core.Options;
 namespace ReviewClips.Cli.Profiles;
 
 /// <summary>
-/// A named bundle of defaults. Every field is nullable: a profile only states what it cares
-/// about, and anything it leaves unset keeps the built-in default. Explicit CLI options always
-/// win over a profile.
+/// A named bundle of defaults. Every field is nullable: unset means keep the built-in default.
+/// Explicit CLI options always win over a profile.
 /// </summary>
 public sealed record RenderProfile
 {
@@ -33,13 +32,29 @@ public sealed record RenderProfile
 
     public double? Contrast { get; init; }
 
+    public double? Gamma { get; init; }
+
+    public bool? Grayscale { get; init; }
+
     public double? Blur { get; init; }
+
+    public double? Sharpen { get; init; }
+
+    public double? Pixelate { get; init; }
+
+    public double? FadeEdgesSeconds { get; init; }
 
     public int? Grain { get; init; }
 
     public bool? Vignette { get; init; }
 
     public bool? Mirror { get; init; }
+
+    public bool? FlipVertical { get; init; }
+
+    public string? Attribution { get; init; }
+
+    public TextPosition? AttributionPosition { get; init; }
 
     public double? Zoom { get; init; }
 
@@ -91,10 +106,18 @@ public sealed record RenderProfile
             Darken = Darken ?? request.Look.Darken,
             Saturation = Saturation ?? request.Look.Saturation,
             Contrast = Contrast ?? request.Look.Contrast,
+            Gamma = Gamma ?? request.Look.Gamma,
+            Grayscale = Grayscale ?? request.Look.Grayscale,
             Blur = Blur ?? request.Look.Blur,
+            Sharpen = Sharpen ?? request.Look.Sharpen,
+            Pixelate = Pixelate ?? request.Look.Pixelate,
+            FadeEdges = Seconds(FadeEdgesSeconds) ?? request.Look.FadeEdges,
             Grain = Grain ?? request.Look.Grain,
             Vignette = Vignette ?? request.Look.Vignette,
             Mirror = Mirror ?? request.Look.Mirror,
+            FlipVertical = FlipVertical ?? request.Look.FlipVertical,
+            Attribution = Attribution ?? request.Look.Attribution,
+            AttributionPosition = AttributionPosition ?? request.Look.AttributionPosition,
             ZoomEnd = Zoom ?? request.Look.ZoomEnd,
             Speed = Speed ?? request.Look.Speed,
         };
@@ -128,7 +151,12 @@ public sealed record RenderProfile
             Encoder = encoder,
             SpliceLength = Seconds(SpliceSeconds) ?? request.SpliceLength,
             SpliceJitter = Seconds(SpliceJitterSeconds) ?? request.SpliceJitter,
-            Mute = Mute ?? request.Mute,
+            Audio = Mute switch
+            {
+                true => AudioOptions.Muted,
+                false => AudioOptions.FromSource(),
+                null => request.Audio,
+            },
         };
     }
 

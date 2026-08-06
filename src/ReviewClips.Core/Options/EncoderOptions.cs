@@ -28,15 +28,18 @@ public sealed record EncoderOptions
     public VideoCodecKind Codec { get; init; } = VideoCodecKind.H264;
 
     /// <summary>
-    /// Perceptual quality target, 0 (best) to 51 (worst); maps to CRF for software
-    /// encoders and CQ for NVENC. 20 is a good default for background footage.
+    /// Perceptual quality target, 0 (best) to 51 (worst); maps to CRF for software encoders and
+    /// CQ for NVENC.
     /// </summary>
     public int Quality { get; init; } = 20;
 
     /// <summary>Encoder speed preset. Interpreted per-encoder.</summary>
     public string? Preset { get; init; }
 
-    /// <summary>Use hardware decoding for extraction. Off by default: init overhead can exceed the gain on short reads.</summary>
+    /// <summary>
+    /// Hardware decoding for extraction. Off by default: init overhead can exceed the gain on
+    /// short reads.
+    /// </summary>
     public bool HardwareDecode { get; init; }
 
     public int AudioBitrateKbps { get; init; } = 160;

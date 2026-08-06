@@ -7,9 +7,8 @@ namespace ReviewClips.Cli.Cli;
 /// <summary>
 /// The option surface shared by <c>generate</c> and <c>batch</c>.
 /// <para>
-/// Every option is nullable and has no parser-level default. That is deliberate: it makes
-/// "was this specified?" unambiguous, so precedence can be resolved cleanly as
-/// CLI value, then profile value, then built-in default.
+/// Every option is nullable with no parser-level default, so "was this specified?" is unambiguous
+/// and precedence resolves as CLI value, then profile value, then built-in default.
 /// </para>
 /// </summary>
 internal sealed class GenerateOptions
@@ -44,6 +43,18 @@ internal sealed class GenerateOptions
 
     public Option<TimeSpan?> SpliceJitter { get; } =
         ValueParsers.Duration("--splice-jitter", "Random variation applied to each splice length.");
+
+    public Option<double?> MaxSourcePercent { get; } = new("--max-source-percent")
+    {
+        Description = "Warn when the render consumes more than this share of the source footage. "
+            + "Pairs with --max-clips, which is how you lower it. 0 disables the check.",
+        HelpName = "0-100",
+    };
+
+    public Option<bool> StrictSourceLimit { get; } = new("--strict-source-limit")
+    {
+        Description = "Fail rather than warn when --max-source-percent is exceeded.",
+    };
 
     public Option<string?> Profile { get; } = new("--profile", "-p")
     {
@@ -190,15 +201,81 @@ internal sealed class GenerateOptions
         HelpName = "0-100",
     };
 
+    public Option<double?> Gamma { get; } = new("--gamma")
+    {
+        Description = "Gamma adjustment; 1 leaves it untouched. Above 1 lifts the midtones.",
+        HelpName = "multiplier",
+    };
+
+    public Option<bool> Grayscale { get; } = new("--grayscale")
+    {
+        Description = "Drop all color. Equivalent to --saturation 0; passing --saturation "
+            + "explicitly overrides it.",
+    };
+
+    public Option<bool> NoGrayscale { get; } = new("--no-grayscale")
+    {
+        Description = "Keep color, overriding a profile that drops it.",
+    };
+
+    public Option<double?> Sharpen { get; } = new("--sharpen")
+    {
+        Description = "Unsharp mask strength; 0 disables. Helps a soft upscale.",
+        HelpName = "0-3",
+    };
+
+    public Option<double?> Pixelate { get; } = new("--pixelate")
+    {
+        Description = "Chunky downscale-and-upscale factor; 1 disables.",
+        HelpName = "1.1-16",
+    };
+
+    public Option<TimeSpan?> FadeEdges { get; } = ValueParsers.Duration(
+        "--fade-edges",
+        "Fade each clip in and out by this much. Unlike --transition this stays inside "
+        + "one clip, so the stream-copy stitch still applies.");
+
     public Option<bool> Vignette { get; } = new("--vignette")
     {
         Description = "Darken the frame corners.",
+    };
+
+    public Option<bool> NoVignette { get; } = new("--no-vignette")
+    {
+        Description = "Leave the frame corners alone, overriding a profile that darkens them.",
     };
 
     public Option<bool> Mirror { get; } = new("--mirror")
     {
         Description = "Horizontally mirror every clip.",
     };
+
+    public Option<bool> NoMirror { get; } = new("--no-mirror")
+    {
+        Description = "Do not mirror, overriding a profile that does.",
+    };
+
+    public Option<bool> FlipVertical { get; } = new("--flip")
+    {
+        Description = "Vertically flip every clip.",
+    };
+
+    public Option<bool> NoFlipVertical { get; } = new("--no-flip")
+    {
+        Description = "Do not flip, overriding a profile that does.",
+    };
+
+    public Option<string?> Attribution { get; } = new("--attribution")
+    {
+        Description = "Burn a credit line into a corner of every clip, "
+            + "e.g. \"Clip from Heat (1995), dir. Michael Mann\".",
+        HelpName = "text",
+    };
+
+    public Option<TextPosition?> AttributionPosition { get; } =
+        ValueParsers.EnumOption<TextPosition>(
+            "--attribution-position",
+            "Where the attribution line sits.");
 
     public Option<double?> Zoom { get; } = new("--zoom")
     {
@@ -212,21 +289,9 @@ internal sealed class GenerateOptions
         HelpName = "multiplier",
     };
 
-    public Option<string?> Overlay { get; } = new("--overlay")
-    {
-        Description = "Image composited over every clip.",
-        HelpName = "path",
-    };
-
-    public Option<double?> OverlayOpacity { get; } = new("--overlay-opacity")
-    {
-        Description = "Opacity of the overlay image.",
-        HelpName = "0-1",
-    };
-
     public Option<string?> Lut { get; } = new("--lut")
     {
-        Description = "3D LUT (.cube) applied for colour grading.",
+        Description = "3D LUT (.cube) applied for color grading.",
         HelpName = "path",
     };
 
@@ -263,9 +328,37 @@ internal sealed class GenerateOptions
         HelpName = "name",
     };
 
-    public Option<bool> Audio { get; } = new("--audio")
+    /// <summary>
+    /// Bare <c>--audio</c> keeps the source audio; <c>--audio track.wav</c> muxes that file
+    /// instead.
+    /// <para>
+    /// <c>ZeroOrOne</c> arity is what makes both spellings work from one option. Respelling it as
+    /// <c>--audio MODE|FILE</c> with <c>mute</c> as an explicit mode would change what an existing
+    /// bare <c>--audio</c> means.
+    /// </para>
+    /// </summary>
+    public Option<string?> Audio { get; } = new("--audio")
     {
-        Description = "Keep the source audio. Off by default, since this footage sits under narration.",
+        Description = "Keep the source audio, or give a file to mux in instead. "
+            + "Off by default, since this footage sits under narration.",
+        HelpName = "path",
+        Arity = ArgumentArity.ZeroOrOne,
+    };
+
+    public Option<TimeSpan?> AudioOffset { get; } = ValueParsers.Duration(
+        "--audio-offset",
+        "Start this far into the external audio track.");
+
+    public Option<double?> AudioVolume { get; } = new("--audio-volume")
+    {
+        Description = "Linear gain applied to the muxed audio; 1 leaves it untouched.",
+        HelpName = "multiplier",
+    };
+
+    public Option<bool> MatchAudio { get; } = new("--match-audio")
+    {
+        Description = "Take the render's length from the external audio track "
+            + "instead of from --duration.",
     };
 
     public Option<bool> HardwareDecode { get; } = new("--hwdecode")
@@ -340,6 +433,8 @@ internal sealed class GenerateOptions
         yield return Splice;
         yield return MaxClips;
         yield return SpliceJitter;
+        yield return MaxSourcePercent;
+        yield return StrictSourceLimit;
         yield return Profile;
         yield return Strategy;
         yield return Seed;
@@ -368,12 +463,22 @@ internal sealed class GenerateOptions
         yield return Contrast;
         yield return Blur;
         yield return Grain;
+        yield return Gamma;
+        yield return Grayscale;
+        yield return NoGrayscale;
+        yield return Sharpen;
+        yield return Pixelate;
+        yield return FadeEdges;
         yield return Vignette;
+        yield return NoVignette;
         yield return Mirror;
+        yield return NoMirror;
+        yield return FlipVertical;
+        yield return NoFlipVertical;
+        yield return Attribution;
+        yield return AttributionPosition;
         yield return Zoom;
         yield return Speed;
-        yield return Overlay;
-        yield return OverlayOpacity;
         yield return Lut;
         yield return Transition;
         yield return TransitionDuration;
@@ -384,6 +489,9 @@ internal sealed class GenerateOptions
         yield return Quality;
         yield return Preset;
         yield return Audio;
+        yield return AudioOffset;
+        yield return AudioVolume;
+        yield return MatchAudio;
         yield return HardwareDecode;
         yield return AnalysisFps;
         yield return SceneThreshold;

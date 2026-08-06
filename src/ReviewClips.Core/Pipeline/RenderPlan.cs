@@ -28,28 +28,40 @@ public sealed record RenderPlan
     /// <summary>Number of clips that will actually be cut, ignoring repeats.</summary>
     public int DistinctClipCount => Planning.ClipSequencer.CountDistinct(Segments);
 
-    /// <summary>Total source footage consumed, counting each distinct clip once.</summary>
-    public TimeSpan DistinctSourceDuration => Planning.ClipSequencer.DistinctSourceDuration(Segments);
+    /// <summary>
+    /// Total source footage consumed, counting each distinct clip once. Read off
+    /// <see cref="SourceUsage"/> rather than recomputed, so the summary's figure and the
+    /// guardrail's are the same number by construction.
+    /// </summary>
+    public TimeSpan DistinctSourceDuration => SourceUsage.Used;
+
+    /// <summary>
+    /// What share of the supplied footage this render consumes. Derived rather than stored so
+    /// the summary, the manifest and the guardrail can never report different numbers.
+    /// </summary>
+    public Planning.SourceUsageReport SourceUsage => Planning.SourceUsageGuard.Evaluate(
+        Segments,
+        Sources.Select(s => (s.Info.Path, s.Info.Duration)),
+        Request.MaxSourceFraction);
 
     /// <summary>How many times the average clip appears. 1.0 means no repetition.</summary>
     public double RepeatFactor =>
         DistinctClipCount == 0 ? 0d : (double)Segments.Count / DistinctClipCount;
 
-    /// <summary>Runtime after transition overlaps are accounted for.</summary>
-    public TimeSpan EffectiveDuration
-    {
-        get
-        {
-            if (!Request.Transition.IsEnabled || Segments.Count < 2)
-            {
-                return TotalDuration;
-            }
-
-            var overlap = Request.Transition.Duration * (Segments.Count - 1);
-            var result = TotalDuration - overlap;
-            return result > TimeSpan.Zero ? result : TotalDuration;
-        }
-    }
+    /// <summary>
+    /// Runtime after transition overlaps are accounted for.
+    /// <para>
+    /// Computed the way the stitcher computes it, via
+    /// <see cref="Planning.SplicePlanner.EffectiveTransition"/>: a transition longer than half the
+    /// shortest clip is clamped, because it cannot consume more of a clip than the clip has.
+    /// Subtracting the requested duration unclamped would under-report any render whose clips are
+    /// shorter than twice the transition.
+    /// </para>
+    /// </summary>
+    public TimeSpan EffectiveDuration =>
+        Planning.SplicePlanner.RenderedDuration(
+            [.. Segments.Select(s => s.Duration)],
+            Request.Transition.IsEnabled ? Request.Transition.Duration : TimeSpan.Zero);
 }
 
 public sealed record RenderResult

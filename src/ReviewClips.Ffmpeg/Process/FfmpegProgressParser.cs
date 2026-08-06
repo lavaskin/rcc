@@ -23,6 +23,16 @@ public sealed class FfmpegProgressParser
 
     public bool Completed { get; private set; }
 
+    /// <summary>
+    /// Frames written to the output so far, as last reported by FFmpeg, or null if it never said.
+    /// <para>
+    /// Worth capturing because FFmpeg exits 0 after writing an empty file: a filter graph that
+    /// yields nothing produces "Output file is empty, nothing was encoded" on stderr, a valid
+    /// but stream-less MP4, and a successful exit code.
+    /// </para>
+    /// </summary>
+    public long? FramesWritten { get; private set; }
+
     public void Feed(string line)
     {
         if (string.IsNullOrEmpty(line))
@@ -48,6 +58,14 @@ public sealed class FfmpegProgressParser
             {
                 CurrentTime = TimeSpan.FromMicroseconds(micros);
                 Report();
+            }
+        }
+        else if (key.Equals("frame", StringComparison.Ordinal))
+        {
+            if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames)
+                && frames >= 0)
+            {
+                FramesWritten = frames;
             }
         }
         else if (key.Equals("progress", StringComparison.Ordinal))

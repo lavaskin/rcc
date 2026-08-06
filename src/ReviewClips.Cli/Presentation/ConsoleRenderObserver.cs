@@ -4,13 +4,9 @@ using Spectre.Console;
 namespace ReviewClips.Cli.Presentation;
 
 /// <summary>
-/// Renders pipeline progress with Spectre.
-/// <para>
-/// Deliberately line-based rather than a live-updating display: the pipeline runs several
-/// FFmpeg processes concurrently, and a live table competing with their output produces a
-/// mess in redirected or non-interactive terminals. Discrete status lines behave correctly
-/// when piped to a file or a CI log.
-/// </para>
+/// Renders pipeline progress with Spectre. Line-based rather than a live-updating display: the
+/// pipeline runs several FFmpeg processes concurrently, and a live table competing with their
+/// output garbles a redirected or non-interactive terminal, such as a file or a CI log.
 /// </summary>
 internal sealed class ConsoleRenderObserver : IRenderObserver
 {
@@ -39,11 +35,11 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
         var label = phase switch
         {
             RenderPhase.Probing => "Probing",
-            RenderPhase.Analyzing => "Analysing",
+            RenderPhase.Analyzing => "Analyzing",
             RenderPhase.Selecting => "Selecting",
             RenderPhase.Extracting => "Extracting",
             RenderPhase.Stitching => "Stitching",
-            RenderPhase.Finalising => "Finalising",
+            RenderPhase.Finalizing => "Finalizing",
             _ => phase.ToString(),
         };
 
@@ -117,8 +113,8 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
             return;
         }
 
-        var colour = count >= requested ? "green" : "yellow";
-        _console.MarkupLine($"  [{colour}]{count}[/] of {requested} segments placed");
+        var color = count >= requested ? "green" : "yellow";
+        _console.MarkupLine($"  [{color}]{count}[/] of {requested} segments placed");
     }
 
     public void OnSegmentCompleted(int completed, int total)

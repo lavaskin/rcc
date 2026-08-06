@@ -8,7 +8,7 @@ using ReviewClips.Ffmpeg.Process;
 namespace ReviewClips.Ffmpeg.Extraction;
 
 /// <summary>
-/// Cuts one segment out of a source file and normalises it to the target format.
+/// Cuts one segment out of a source file and normalizes it to the target format.
 /// <para>
 /// Every segment is written with identical geometry, frame rate, pixel format and timebase.
 /// That uniformity is what lets the stitcher join them with a stream copy instead of a second
@@ -50,7 +50,8 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             arguments,
             request.Segment.Duration,
             progress,
-            cancellationToken);
+            cancellationToken,
+            requireFrames: true);
     }
 
     public IReadOnlyList<string> DescribeArguments(SegmentExtractionRequest request)
@@ -60,11 +61,11 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         var segment = request.Segment;
         var look = request.Look;
 
-        // A speed change means the output length differs from the source length consumed.
-        // Read speed * duration seconds so the rendered clip still lands on the target length.
-        var readDuration = look.HasSpeedChange
-            ? TimeSpan.FromSeconds(segment.Duration.TotalSeconds * look.Speed)
-            : segment.Duration;
+        // A speed change makes the output length differ from the source length consumed, so the
+        // read window is the wider (or narrower) of the two. Taken from the segment rather than
+        // recomputed from look.Speed: selection reserved this exact stretch when it fitted the
+        // clip to its source.
+        var readDuration = segment.ReadDuration;
 
         var arguments = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
 
@@ -74,18 +75,31 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         }
 
         // -ss BEFORE -i is an input seek: FFmpeg jumps to the nearest preceding keyframe and
-        // decodes forward, discarding frames until the requested timestamp. Combined with
-        // re-encoding this is both fast and frame-accurate, so there is no need for the far
-        // slower output-side seek.
+        // decodes forward, discarding frames until the requested timestamp. With re-encoding
+        // that is both fast and frame-accurate, so the far slower output-side seek is not needed.
         arguments.AddRange(["-ss", Seconds(segment.Start)]);
         arguments.AddRange(["-t", Seconds(readDuration)]);
         arguments.AddRange(["-i", segment.SourcePath]);
 
-        var overlayIndex = default(int?);
-        if (!string.IsNullOrWhiteSpace(look.OverlayPath))
+        var nextInput = 1;
+
+        // Segment audio is wanted but this source has no audio stream. Both stitchers need every
+        // segment to carry the same stream layout — concat for a clean stream copy, the filter
+        // graph because it references [k:a] per input and cannot bind if one is absent.
+        //
+        // Bounded by the segment's own length, not readDuration: anullsrc is infinite, and the
+        // silence is generated at output rate, so it needs no speed compensation.
+        var silenceIndex = default(int?);
+        if (!request.Mute && !request.Source.HasAudio)
         {
-            arguments.AddRange(["-i", look.OverlayPath]);
-            overlayIndex = 1;
+            arguments.AddRange(
+            [
+                "-f", "lavfi",
+                "-t", Seconds(segment.Duration),
+                "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+            ]);
+
+            silenceIndex = nextInput++;
         }
 
         var context = new FilterContext
@@ -94,7 +108,12 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
             Format = request.Format,
             Look = look,
             SegmentDuration = segment.Duration,
-            OverlayInputIndex = overlayIndex,
+
+            // Content-addressed, so the many parallel extractions of one render all resolve to
+            // the same file and write it at most once.
+            AttributionTextPath = look.HasAttribution
+                ? TextResources.Materialize(look.Attribution!.Trim())
+                : null,
         };
 
         var graph = _graphBuilder.Build(context, inputLabel: "0:v", outputLabel: "vout");
@@ -102,27 +121,26 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", "[vout]"]);
 
-        // Drop the source's chapter markers. FFmpeg would otherwise copy them from the input
-        // and merely shift them to the cut, so a three second segment ends up carrying the
-        // whole film's chapter list. They describe footage this segment does not contain, and
-        // the filter-graph stitcher would then propagate the first segment's copy into the
-        // finished file.
+        // Drop the source's chapter markers. FFmpeg would otherwise copy them from the input and
+        // merely shift them to the cut, so a three second segment carries the whole film's
+        // chapter list, which the filter-graph stitcher then propagates into the finished file.
         arguments.AddRange(["-map_chapters", "-1"]);
 
-        if (request.Mute || !request.Source.HasAudio)
+        if (request.Mute)
         {
             arguments.Add("-an");
         }
         else
         {
-            arguments.AddRange(["-map", "0:a:0?"]);
+            arguments.AddRange(["-map", silenceIndex is { } silence ? $"{silence}:a:0" : "0:a:0?"]);
             arguments.AddRange(["-c:a", "aac"]);
             arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
             arguments.AddRange(["-ac", "2"]);
 
-            if (look.HasSpeedChange)
+            // Not applied to substituted silence: it was generated at the finished length
+            // already, so retiming it would make it disagree with the video.
+            if (look.HasSpeedChange && silenceIndex is null)
             {
-                // atempo only accepts 0.5-2.0 per instance; chain to reach further extremes.
                 arguments.AddRange(["-filter:a", BuildAtempoChain(look.Speed)]);
             }
         }
@@ -133,9 +151,23 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-pix_fmt", request.Encoder.PixelFormat]);
 
         // Force constant frame rate. Variable timestamps survive the fps filter in some
-        // containers and then desynchronise the concatenated result.
+        // containers and then desynchronize the concatenated result.
         arguments.AddRange(["-fps_mode", "cfr"]);
         arguments.AddRange(["-r", Number(request.Format.FrameRate)]);
+
+        // Cut to an exact frame count rather than trusting -t. -ss/-t bound which *source*
+        // timestamps are read and the fps filter resamples that window onto the output rate;
+        // both round outwards, so a segment comes out one to two frames long and the bias
+        // compounds. Concat sums actual segment lengths, while the filter graph computes xfade
+        // offsets from the planned ones, so the drift disturbs either stitcher.
+        //
+        // Asking for fewer frames than FFmpeg would have produced is safe: the read window is
+        // always the wider of the two, so the frames exist and the surplus is not written.
+        var frames = FrameCount(segment.Duration, request.Format.FrameRate);
+        if (frames > 0)
+        {
+            arguments.AddRange(["-frames:v", frames.ToString(CultureInfo.InvariantCulture)]);
+        }
 
         // A short, fixed GOP keeps every segment starting on a keyframe, which the concat
         // demuxer requires for a clean stream-copy join.
@@ -148,6 +180,21 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
 
         arguments.Add(request.OutputPath);
         return arguments;
+    }
+
+    /// <summary>
+    /// How many output frames a segment of <paramref name="duration"/> should contain at
+    /// <paramref name="frameRate"/>. Returns 0 when the frame rate is unusable, which leaves the
+    /// caller to omit the cap rather than write a zero-frame file.
+    /// </summary>
+    internal static int FrameCount(TimeSpan duration, double frameRate)
+    {
+        if (duration <= TimeSpan.Zero || frameRate <= 0d)
+        {
+            return 0;
+        }
+
+        return Math.Max(1, (int)Math.Round(duration.TotalSeconds * frameRate, MidpointRounding.AwayFromZero));
     }
 
     /// <summary>

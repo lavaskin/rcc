@@ -29,7 +29,7 @@ public class RoundTripTests
         var probe = new FfprobeMediaProbe(_fixture.Runner, NullLogger<FfprobeMediaProbe>.Instance);
         var info = await probe.ProbeAsync(_fixture.SimpleClip, TestContext.Current.CancellationToken);
 
-        var selector = new FfmpegEncoderSelector(_fixture.Runner, NullLogger<FfmpegEncoderSelector>.Instance);
+        var selector = new FfmpegEncoderSelector(_fixture.EncoderProbe, NullLogger<FfmpegEncoderSelector>.Instance);
 
         // Force software encoding so the test result does not depend on the GPU present.
         var encoder = await selector.SelectAsync(
@@ -97,7 +97,7 @@ public class RoundTripTests
     }
 
     [Fact]
-    public async Task ExtractedSegmentsAreNormalisedToIdenticalGeometry()
+    public async Task ExtractedSegmentsAreNormalizedToIdenticalGeometry()
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
 
@@ -273,7 +273,8 @@ public class RoundTripTests
         TransitionKind kind,
         EncoderProfile encoder,
         double fade,
-        OutputFormat? format = null) => new()
+        OutputFormat? format = null,
+        AudioOptions? audio = null) => new()
         {
             SegmentPaths = paths,
             SegmentDurations = durations.Select(TimeSpan.FromSeconds).ToList(),
@@ -288,7 +289,7 @@ public class RoundTripTests
             Format = format ?? (OutputFormat.Youtube with { Width = 320, Height = 180 }),
             Encoder = encoder,
             EncoderOptions = new EncoderOptions { Preference = EncoderPreference.X264 },
-            Mute = true,
+            Audio = audio ?? AudioOptions.Muted,
             WorkingDirectory = Path.GetDirectoryName(output)!,
         };
 }
@@ -301,7 +302,7 @@ public class EncoderSelectorTests
     public EncoderSelectorTests(FfmpegFixture fixture) => _fixture = fixture;
 
     private FfmpegEncoderSelector Selector() =>
-        new(_fixture.Runner, NullLogger<FfmpegEncoderSelector>.Instance);
+        new(_fixture.EncoderProbe, NullLogger<FfmpegEncoderSelector>.Instance);
 
     [Fact]
     public async Task Auto_AlwaysResolvesToSomethingUsable()

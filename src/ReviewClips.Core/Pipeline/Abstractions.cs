@@ -9,6 +9,16 @@ namespace ReviewClips.Core.Pipeline;
 public interface IMediaProbe
 {
     Task<MediaInfo> ProbeAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads only the container duration; this is what <c>--match-audio</c> asks.
+    /// <para>
+    /// Separate from <see cref="ProbeAsync"/> because <see cref="MediaInfo"/> requires a video
+    /// stream — width, height, frame rate and pixel format are all non-nullable — so a bare
+    /// <c>.wav</c> cannot go through it.
+    /// </para>
+    /// </summary>
+    Task<TimeSpan> ProbeDurationAsync(string path, CancellationToken cancellationToken);
 }
 
 /// <summary>Scans a file for scene cuts, motion, and unusable stretches.</summary>
@@ -44,7 +54,7 @@ public sealed record SegmentExtraction
     public required int Index { get; init; }
 }
 
-/// <summary>Cuts one segment out of a source and normalises it to the target format.</summary>
+/// <summary>Cuts one segment out of a source and normalizes it to the target format.</summary>
 public interface ISegmentExtractor
 {
     Task ExtractAsync(
@@ -91,12 +101,18 @@ public sealed record StitchRequest
 
     public required EncoderOptions EncoderOptions { get; init; }
 
-    public required bool Mute { get; init; }
+    public required AudioOptions Audio { get; init; }
 
     public required string WorkingDirectory { get; init; }
+
+    /// <summary>True when the finished file should carry no audio stream.</summary>
+    public bool Mute => Audio.IsMuted;
+
+    /// <summary>True when the segments' own audio should be joined.</summary>
+    public bool UsesSegmentAudio => Audio.UsesSegmentAudio;
 }
 
-/// <summary>Joins normalised segments into the finished render.</summary>
+/// <summary>Joins normalized segments into the finished render.</summary>
 public interface IStitcher
 {
     bool CanHandle(StitchRequest request);

@@ -4,9 +4,9 @@ namespace ReviewClips.Core.Sources;
 /// Expands user-supplied inputs into a concrete list of media files. Accepts a file, a
 /// directory, or a glob.
 /// <para>
-/// Being source-agnostic is deliberate: the same pipeline runs over a feature film, a folder
-/// of trailers, public-domain footage, or licensed stock. That means you can change where the
-/// footage comes from — including for copyright reasons — without changing anything else.
+/// Source-agnostic by design: the same pipeline runs over a feature film, a folder of trailers,
+/// public-domain footage or licensed stock, so where the footage comes from can change —
+/// including for copyright reasons — without anything else changing.
 /// </para>
 /// </summary>
 public sealed class SourceResolver
@@ -101,12 +101,14 @@ public sealed class SourceResolver
             MatchCasing = MatchCasing.CaseInsensitive,
         };
 
-        return Directory
-            .EnumerateFiles(directory, pattern, options)
-            .Where(f => _extensions.Contains(Path.GetExtension(f)))
-            .OrderBy(f => f, StringComparer.Ordinal)
-            .Select(Path.GetFullPath)
-            .ToList();
+        return
+        [
+            .. Directory
+                .EnumerateFiles(directory, pattern, options)
+                .Where(f => _extensions.Contains(Path.GetExtension(f)))
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .Select(Path.GetFullPath),
+        ];
     }
 }
 

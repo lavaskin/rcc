@@ -6,10 +6,9 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Tests.Selection;
 
 /// <summary>
-/// Chapter title matching. The rule that matters is the asymmetry: skipping a real chapter costs
-/// a few minutes of eligible footage, whereas failing to skip the credits puts a scrolling text
-/// crawl in the finished render. The patterns lean accordingly, but must not be so loose that an
-/// ordinary content chapter is caught.
+/// Chapter title matching. Skipping a real chapter costs a few minutes of eligible footage,
+/// whereas failing to skip the credits puts a text crawl in the render, so the patterns lean
+/// toward skipping — but not so loosely that an ordinary content chapter is caught.
 /// </summary>
 public class ChapterFilterTests
 {
@@ -75,7 +74,7 @@ public class ChapterFilterTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
-    public void GenericTitles_AreRecognised(string? title) =>
+    public void GenericTitles_AreRecognized(string? title) =>
         ChapterFilter.IsGenericTitle(title).ShouldBeTrue();
 
     [Theory]
@@ -116,8 +115,8 @@ public class ChapterFilterTests
 }
 
 /// <summary>
-/// Chapter markers as they affect eligibility. This is the point of the feature: a percentage
-/// trim is a guess, whereas a named chapter states where the credits are.
+/// Chapter markers as they affect eligibility: a percentage trim is a guess, whereas a named
+/// chapter states where the credits are.
 /// </summary>
 public class ChapterEligibilityTests
 {

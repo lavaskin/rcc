@@ -8,8 +8,8 @@ public interface ISegmentSelector
     SelectionStrategy Strategy { get; }
 
     /// <summary>
-    /// True when this selector needs the analysis pass. Lets the pipeline skip an expensive
-    /// full-file scan for strategies that don't benefit from one.
+    /// True when this selector needs the analysis pass; false lets the pipeline skip an
+    /// expensive full-file scan.
     /// </summary>
     bool RequiresAnalysis { get; }
 

@@ -10,23 +10,20 @@ using Spectre.Console;
 namespace ReviewClips.Cli.Commands;
 
 /// <summary>
-/// Runs the analysis pass and populates the cache, without rendering.
-/// <para>
-/// Useful as a deliberate warm-up: scan a title once while you do something else, and every
-/// later <c>generate</c> against it starts instantly.
-/// </para>
+/// Runs the analysis pass and populates the cache, without rendering. A deliberate warm-up: scan
+/// a title once and every later <c>generate</c> against it starts from the cache.
 /// </summary>
 internal sealed class ScanCommand
 {
     private readonly Argument<List<string>> _inputs = new("input")
     {
-        Description = "Files, directories or globs to analyse.",
+        Description = "Files, directories or globs to analyze.",
         Arity = ArgumentArity.OneOrMore,
     };
 
     private readonly Option<bool> _force = new("--force")
     {
-        Description = "Re-analyse even when a cached result exists.",
+        Description = "Re-analyze even when a cached result exists.",
     };
 
     private readonly Option<int?> _fps = new("--analysis-fps")
@@ -48,7 +45,7 @@ internal sealed class ScanCommand
 
     public Command Build(IServiceProvider services)
     {
-        var command = new Command("scan", "Analyse sources and populate the cache.");
+        var command = new Command("scan", "Analyze sources and populate the cache.");
         command.Add(_inputs);
         command.Add(_force);
         command.Add(_fps);

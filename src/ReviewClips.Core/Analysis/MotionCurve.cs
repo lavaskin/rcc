@@ -20,8 +20,8 @@ public sealed class MotionCurve
     public MotionCurve(IEnumerable<MotionSample> samples)
     {
         var ordered = samples.OrderBy(s => s.AtSeconds).ToArray();
-        _times = ordered.Select(s => s.AtSeconds).ToArray();
-        _values = ordered.Select(s => s.Mafd).ToArray();
+        _times = [.. ordered.Select(s => s.AtSeconds)];
+        _values = [.. ordered.Select(s => s.Mafd)];
     }
 
     public static MotionCurve Empty { get; } = new([]);
@@ -49,7 +49,7 @@ public sealed class MotionCurve
         return sum / (to - from);
     }
 
-    /// <summary>Peak motion across a range, used to reject shots containing violent cuts or flashes.</summary>
+    /// <summary>Peak motion across a range, or <c>null</c> when the curve has no samples there.</summary>
     public double? MaxOver(TimeRange range)
     {
         var (from, to) = IndexRange(range);
@@ -93,7 +93,7 @@ public sealed class MotionCurve
         return Math.Sqrt(sumSquares / (to - from));
     }
 
-    /// <summary>Median of all samples. Used to normalise thresholds per-title rather than globally.</summary>
+    /// <summary>Median of all samples. Used to normalize thresholds per-title rather than globally.</summary>
     public double Median()
     {
         if (_values.Length == 0)

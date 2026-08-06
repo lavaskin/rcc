@@ -12,7 +12,7 @@ public class StitchPlanTests
         double transitionSeconds = 0.4,
         double fadeIn = 0,
         double fadeOut = 0,
-        bool mute = true) => new()
+        AudioOptions? audio = null) => new()
         {
             SegmentPaths = durations.Select((_, i) => $"/tmp/seg{i}.mp4").ToList(),
             SegmentDurations = durations.Select(TimeSpan.FromSeconds).ToList(),
@@ -33,7 +33,7 @@ public class StitchPlanTests
                 ExtraArguments = [],
             },
             EncoderOptions = new EncoderOptions(),
-            Mute = mute,
+            Audio = audio ?? AudioOptions.Muted,
             WorkingDirectory = "/tmp/work",
         };
 
@@ -149,7 +149,7 @@ public class StitchPlanTests
     [Fact]
     public void Graph_CrossfadesAudioWhenItIsKept()
     {
-        var graph = StitchPlan.Create(Request([5, 5, 5], mute: false))
+        var graph = StitchPlan.Create(Request([5, 5, 5], audio: AudioOptions.FromSource()))
             .BuildGraph(includeAudio: true);
 
         graph.ShouldContain("[0:a][1:a]acrossfade=d=0.4");
@@ -159,10 +159,80 @@ public class StitchPlanTests
     [Fact]
     public void Graph_ConcatenatesAudioWhenThereAreNoTransitions()
     {
-        var graph = StitchPlan.Create(Request([5, 5], TransitionKind.None, fadeIn: 0.5, mute: false))
+        var graph = StitchPlan.Create(
+                Request([5, 5], TransitionKind.None, audio: AudioOptions.FromSource()))
             .BuildGraph(includeAudio: true);
 
+        // No fades here, so the concat writes [aout] directly with nothing after it.
         graph.ShouldContain("concat=n=2:v=0:a=1[aout]");
+    }
+
+    // --- Audio fades -------------------------------------------------------
+
+    [Fact]
+    public void Graph_FadesAudioOnTheSameScheduleAsVideo()
+    {
+        var graph = StitchPlan.Create(
+                Request([5, 5], TransitionKind.None, fadeIn: 0.5, fadeOut: 0.5, audio: AudioOptions.FromSource()))
+            .BuildGraph(includeAudio: true);
+
+        // 10s of material with no transition overlap. Video and audio must agree exactly, or
+        // the picture reaches black while the sound is still playing.
+        graph.ShouldContain("fade=t=in:st=0:d=0.5");
+        graph.ShouldContain("fade=t=out:st=9.5:d=0.5");
+        graph.ShouldContain("afade=t=in:st=0:d=0.5");
+        graph.ShouldContain("afade=t=out:st=9.5:d=0.5");
+    }
+
+    [Fact]
+    public void Graph_FadesAudioAfterCrossfadingSegments()
+    {
+        var graph = StitchPlan.Create(
+                Request([5, 5, 5], fadeIn: 0.5, audio: AudioOptions.FromSource()))
+            .BuildGraph(includeAudio: true);
+
+        // The whole-render fade belongs at the end of the chain, after the per-clip
+        // acrossfades, not folded into one of them.
+        graph.ShouldContain("acrossfade=d=0.4");
+        graph.ShouldContain($"afade=t=in:st=0:d=0.5[{StitchPlan.AudioOutputLabel}]");
+    }
+
+    [Fact]
+    public void Graph_LeavesAudioAloneWhenThereAreNoFades()
+    {
+        var graph = StitchPlan.Create(
+                Request([5, 5], TransitionKind.None, audio: AudioOptions.FromSource()))
+            .BuildGraph(includeAudio: true);
+
+        graph.ShouldNotContain("afade");
+    }
+
+    [Fact]
+    public void FadeFiguresMatchBetweenVideoAndAudio()
+    {
+        var plan = StitchPlan.Create(
+            Request([5, 5], TransitionKind.None, fadeIn: 0.5, fadeOut: 1.5));
+
+        plan.HasFades.ShouldBeTrue();
+        plan.FadeInDuration.ShouldBe(TimeSpan.FromSeconds(0.5));
+        plan.FadeOutDuration.ShouldBe(TimeSpan.FromSeconds(1.5));
+        plan.FadeOutStart.ShouldBe(TimeSpan.FromSeconds(8.5));
+
+        var filters = plan.AudioFadeFilters();
+        filters.Count.ShouldBe(2);
+        filters[0].ShouldBe("afade=t=in:st=0:d=0.5");
+        filters[1].ShouldBe("afade=t=out:st=8.5:d=1.5");
+    }
+
+    [Fact]
+    public void AnOverlongFadeIsClampedForAudioToo()
+    {
+        // ClampFade caps at a third of the render. Audio must inherit the clamped figure, not
+        // the requested one, or the two drift apart precisely when the fade is most obvious.
+        var plan = StitchPlan.Create(Request([3, 3], TransitionKind.None, fadeIn: 10));
+
+        plan.FadeInDuration.ShouldBe(TimeSpan.FromSeconds(2));
+        plan.AudioFadeFilters()[0].ShouldBe("afade=t=in:st=0:d=2");
     }
 
     [Fact]
@@ -207,7 +277,7 @@ public class StitcherSelectionTests
             ExtraArguments = [],
         },
         EncoderOptions = new EncoderOptions(),
-        Mute = true,
+        Audio = AudioOptions.Muted,
         WorkingDirectory = "/tmp/work",
     };
 

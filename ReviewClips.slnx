@@ -5,6 +5,7 @@
     <Project Path="src/ReviewClips.Ffmpeg/ReviewClips.Ffmpeg.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ReviewClips.Cli.Tests/ReviewClips.Cli.Tests.csproj" />
     <Project Path="tests/ReviewClips.Core.Tests/ReviewClips.Core.Tests.csproj" />
     <Project Path="tests/ReviewClips.Ffmpeg.Tests/ReviewClips.Ffmpeg.Tests.csproj" />
   </Folder>

@@ -4,12 +4,8 @@ using ReviewClips.Core.Options;
 namespace ReviewClips.Ffmpeg.Filters;
 
 /// <summary>
-/// Converts HDR (PQ / HLG) sources to SDR BT.709.
-/// <para>
-/// Without this, a 4K HDR remux re-encoded as SDR renders washed-out and grey, which is one of
-/// the most common and most confusing FFmpeg results. The chain converts to linear light,
-/// tone-maps in floating point, then returns to BT.709.
-/// </para>
+/// Converts HDR (PQ / HLG) sources to SDR BT.709 via linear light, a floating-point tone-map,
+/// and a return to BT.709. Without it an HDR remux re-encoded as SDR renders washed-out and gray.
 /// </summary>
 public sealed class ToneMapStage : IVideoFilterStage
 {
@@ -24,14 +20,11 @@ public sealed class ToneMapStage : IVideoFilterStage
         var source = context.Source;
         var isHdr = source.IsHdr;
 
-        // The input characteristics are stamped onto the frames with setparams before zscale
-        // runs. zscale fails outright with "no path between colorspaces" whenever the transfer,
-        // matrix or primaries is unspecified, and real HDR rips frequently carry partial
-        // metadata (a PQ transfer tag with no primaries, for instance).
-        //
-        // setparams is used rather than zscale's own tin/min/pin options because those were
-        // measured not to resolve the conversion path on FFmpeg 8.1 — the error persists with
-        // them set, whereas tagging the frames upstream works for PQ, HLG and forced-SDR alike.
+        // setparams stamps the input characteristics onto the frames before zscale runs. zscale
+        // fails outright with "no path between colorspaces" whenever transfer, matrix or
+        // primaries is unspecified, and real HDR rips frequently carry partial metadata (a PQ
+        // transfer tag with no primaries, for instance). zscale's own tin/min/pin options do not
+        // resolve the path on FFmpeg 8.1; tagging upstream works for PQ, HLG and forced-SDR alike.
         var transferIn = Coalesce(source.ColorTransfer, isHdr ? "smpte2084" : "bt709");
         var matrixIn = Coalesce(source.ColorSpace, isHdr ? "bt2020nc" : "bt709");
         var primariesIn = Coalesce(source.ColorPrimaries, isHdr ? "bt2020" : "bt709");
@@ -53,7 +46,7 @@ public sealed class ToneMapStage : IVideoFilterStage
     }
 
     /// <summary>
-    /// Treats FFmpeg's placeholders for missing metadata as absent. ffprobe reports
+    /// Treats FFmpeg's placeholders for missing metadata as absent: ffprobe reports
     /// <c>unknown</c> or <c>reserved</c> rather than omitting the field.
     /// </summary>
     private static string Coalesce(string? value, string fallback) =>
@@ -64,11 +57,8 @@ public sealed class ToneMapStage : IVideoFilterStage
 }
 
 /// <summary>
-/// Retimes the segment.
-/// <para>
-/// The extractor compensates by reading <c>duration * speed</c> seconds of source, so the
-/// rendered clip still lands on the requested length.
-/// </para>
+/// Retimes the segment. The extractor compensates by reading <c>duration * speed</c> seconds of
+/// source, so the rendered clip still lands on the requested length.
 /// </summary>
 public sealed class SpeedStage : IVideoFilterStage
 {
@@ -94,9 +84,9 @@ public sealed class SpeedStage : IVideoFilterStage
 /// <summary>
 /// Corrects non-square pixels before any aspect-ratio arithmetic.
 /// <para>
-/// Anamorphic sources (most DVDs, some broadcast captures) store 720x480 pixels that are meant
-/// to be displayed as 16:9. FFmpeg's <c>scale</c> works on stored dimensions and ignores the
-/// sample aspect ratio, so skipping this step silently produces horizontally squashed output.
+/// Anamorphic sources (most DVDs, some broadcast captures) store 720x480 pixels meant to be
+/// displayed as 16:9, and FFmpeg's <c>scale</c> works on stored dimensions and ignores the
+/// sample aspect ratio, so skipping this silently produces horizontally squashed output.
 /// </para>
 /// </summary>
 public sealed class SquarePixelStage : IVideoFilterStage
@@ -163,8 +153,8 @@ public sealed class FitStage : IVideoFilterStage
     }
 
     /// <summary>
-    /// The standard vertical-video treatment: a blurred, cropped copy fills the frame while the
-    /// unmodified source is centred on top. Requires a branch, so it emits several chains.
+    /// The standard vertical-video treatment: a blurred, cropped copy fills the frame with the
+    /// unmodified source centerd on top. Branches, so it emits several chains.
     /// </summary>
     private static void EmitBlurPad(
         FilterGraphWriter writer,
@@ -201,9 +191,8 @@ public sealed class FitStage : IVideoFilterStage
         }
         else
         {
-            // Scale beyond the frame, then crop back to it. This lets a very wide source fill
-            // more of a very tall frame at the cost of some width, instead of leaving three
-            // quarters of a vertical video as blurred filler.
+            // Scale beyond the frame, then crop back to it: a very wide source fills more of a
+            // very tall frame at the cost of some width, rather than mostly blurred filler.
             var scaledW = (int)Math.Round(w * foregroundScale);
             var scaledH = (int)Math.Round(h * foregroundScale);
 
@@ -223,9 +212,9 @@ public sealed class FitStage : IVideoFilterStage
 /// <summary>
 /// Forces a constant frame rate.
 /// <para>
-/// Required for correctness, not just consistency: variable-frame-rate sources produce
-/// segments whose timestamps do not line up, and the concat demuxer then drifts audio and
-/// video apart or stalls on a long gap.
+/// Correctness, not just consistency: variable-frame-rate sources produce segments whose
+/// timestamps do not line up, and the concat demuxer then drifts audio and video apart or
+/// stalls on a long gap.
 /// </para>
 /// </summary>
 public sealed class FrameRateStage : IVideoFilterStage
@@ -272,16 +261,32 @@ public sealed class ZoomStage : IVideoFilterStage
     }
 }
 
+/// <summary>Mirrors the frame horizontally, vertically, or both.</summary>
 public sealed class MirrorStage : IVideoFilterStage
 {
     public int Order => FilterStageOrder.Mirror;
 
     public string Name => "mirror";
 
-    public bool AppliesTo(FilterContext context) => context.Look.Mirror;
+    public bool AppliesTo(FilterContext context) =>
+        context.Look.Mirror || context.Look.FlipVertical;
 
-    public void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel) =>
-        writer.AddChain(inputLabel, outputLabel, "hflip");
+    public void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel)
+    {
+        var filters = new List<string>(2);
+
+        if (context.Look.Mirror)
+        {
+            filters.Add("hflip");
+        }
+
+        if (context.Look.FlipVertical)
+        {
+            filters.Add("vflip");
+        }
+
+        writer.AddChain(inputLabel, outputLabel, [.. filters]);
+    }
 }
 
 /// <summary>Guarantees an encoder-safe pixel format as the last step.</summary>

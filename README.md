@@ -27,7 +27,6 @@ Using material you do not own carries constraints worth understanding before you
 - [Configuration](#configuration)
 - [Exit codes](#exit-codes)
 - [How it works](#how-it-works)
-- [Performance](#performance)
 - [Copyright and sourcing](#copyright-and-sourcing)
 - [Development](#development)
 
@@ -72,11 +71,20 @@ rcc generate -i movie.mkv -d 90s --dry-run
 # Build from specific timestamps
 rcc generate -i movie.mkv --cues notes.txt -d 2m -o bg.mp4
 
+# Lay the footage under a music bed, cut to exactly its length
+rcc generate -i movie.mkv --audio bed.wav --match-audio -o bg.mp4
+
+# Burn in a credit line
+rcc generate -i movie.mkv -d 90s --attribution "Clip from Heat (1995)" -o bg.mp4
+
+# Check what this machine can actually do
+rcc doctor
+
 # Let the source's own chapter markers exclude the titles and credits
 rcc generate -i movie.mkv -d 90s --skip-head 0 --skip-tail 0 -o bg.mp4
 ```
 
-The first run against a source analyses it and caches the result. Later runs against the same file
+The first run against a source analyzes it and caches the result. Later runs against the same file
 skip that step.
 
 ---
@@ -90,6 +98,7 @@ skip that step.
 | `scan` | Analyze sources and populate the cache without rendering. |
 | `probe` | Print resolution, frame rate, HDR status, pixel aspect ratio, and chapters. |
 | `profiles` | List available presets. |
+| `doctor` | Check FFmpeg, encoders, filters, and the analysis cache. |
 
 `rcc <command> --help` lists all options for that command.
 
@@ -103,6 +112,60 @@ uses a seed derived from the base seed, so the whole batch is reproducible from 
 would skip.
 
 `probe` and `scan` take one or more paths as positional arguments rather than `-i`.
+
+`doctor` accepts `--cache` (report the analysis cache only, skipping the encoder probes) and
+`--clear-cache`.
+
+### `doctor`
+
+Reports what the local machine can actually do:
+
+```bash
+rcc doctor
+```
+
+```
+ok ffmpeg   n8.1.2
+ok ffprobe  n8.1.2
+                           Encoders
+ Encoder              Usable   Select with
+ libx264 (required)   yes      --encoder x264
+ libx265              yes      --encoder x265 --codec hevc
+ h264_nvenc           yes      --encoder nvenc
+ ...
+each row was measured by encoding two frames, not by reading -encoders
+ok all 27 known filters present
+ok drawtext a default font resolves, so --attribution will render
+analysis cache: 18 entries, 3.1 MB in ~/.local/share/reviewclips/analysis
+Environment looks good.
+```
+
+The encoder rows are produced by the same probe encode the renderer uses to select an encoder,
+rather than by reading `ffmpeg -encoders`. This matters because NVENC is compiled into most FFmpeg
+builds and still fails at runtime without a suitable driver, or when every session is in use, so a
+list of compiled-in encoders does not answer the question. `doctor` reports what `generate` will
+really do. The `drawtext` row works the same way: the filter being compiled in does not mean a font
+is installed for it to use, so a caption is actually drawn to find out.
+
+Filters are reported in two tiers. A filter a default render cannot avoid is fatal; one that only
+gates an opt-in flag is reported as a limitation, naming the flag it disables:
+
+```
+ok every filter a default render needs is present
+-- zscale missing, so HDR tone mapping (--tonemap) is unavailable
+-- drawtext missing, so burned-in credit lines (--attribution) is unavailable
+Environment is usable with the limitations noted above.
+```
+
+This distinction matters in practice: `zscale` needs libzimg, which Alpine and many minimal
+container images leave out, and `drawtext` needs libfreetype. Neither stops rcc rendering, so
+neither is treated as a broken environment.
+
+Exits `0` when the environment is usable — with or without limitations — and `4` when it is not.
+
+`--clear-cache` removes the cache entries and the stale burned-in text files, and nothing else.
+The cache directory is taken verbatim from `Cache:Directory`, so it deletes only the files it
+wrote rather than emptying whatever that path happens to point at.
 
 ---
 
@@ -168,7 +231,7 @@ $ rcc probe --chapters movie.mkv
 Matching is on titles only, never on position, so nothing is guessed. Two consequences follow:
 
 - A rip whose chapters are named `Chapter 01`, `Chapter 02`, ... carries no usable information.
-  Filtering degrades to a no-op and the `--skip-head` / `--skip-tail` trims remain the only defence.
+  Filtering degrades to a no-op and the `--skip-head` / `--skip-tail` trims remain the only defense.
   `probe --chapters` says so explicitly when this is the case.
 - A named chapter is caught wherever it sits, not only at the ends. An episode whose opening theme
   starts at 1:30 or whose next-episode preview sits before the credits is handled.
@@ -189,7 +252,7 @@ rcc generate -i ep01.mkv -d 90s --skip-chapter "cold open" --skip-chapter "sting
 rcc generate -i ep01.mkv -d 90s --chapters off --skip-chapter "ending*"
 ```
 
-`--skip-chapter` is honoured whether or not `--chapters off` is set, so `off` disables the built-in
+`--skip-chapter` is honored whether or not `--chapters off` is set, so `off` disables the built-in
 titles while leaving explicit patterns in force. A `--skip-chapter` that matches nothing produces a
 warning rather than silently doing nothing.
 
@@ -222,7 +285,7 @@ too busy. These values are approximate and benefit from per-title adjustment.
 
 Fit modes:
 
-- `crop` — scale to cover the frame, then centre-crop. Fills the frame, loses the edges.
+- `crop` — scale to cover the frame, then center-crop. Fills the frame, loses the edges.
 - `pad` — scale to fit, then letterbox. Keeps the whole image.
 - `blur-pad` — scale to fit over a blurred, zoomed copy of itself. Common for vertical output.
 - `stretch` — ignore aspect ratio.
@@ -241,19 +304,59 @@ Without it, HDR sources render washed out.
 | `--darken <0-1>` | `0.35` | Scales luma. `0.35` renders at 65% brightness. |
 | `--saturation <m>` | `0.80` | Saturation multiplier. |
 | `--contrast <m>` | `1.0` | Contrast multiplier. |
+| `--gamma <m>` | `1.0` | Gamma. Above 1 lifts the midtones, below 1 deepens them. |
+| `--grayscale` | off | Drops all color. Equivalent to `--saturation 0`. |
 | `--blur <sigma>` | `0` | Gaussian blur. |
+| `--sharpen <0-3>` | `0` | Unsharp mask. Helps a soft upscale. |
+| `--pixelate <1.1-16>` | off | Chunky downscale-and-upscale. |
 | `--grain <0-100>` | `0` | Film grain. |
 | `--vignette` | off | Darkens frame corners. |
+| `--fade-edges <dur>` | `0` | Fades each clip in and out. See note below. |
 | `--mirror` | off | Horizontal flip. |
+| `--flip` | off | Vertical flip. |
 | `--zoom <factor>` | `1.0` | Slow zoom across each clip, e.g. `1.08`. |
 | `--speed <m>` | `1.0` | Playback rate. Source read length is adjusted to keep output length. |
 | `--lut <path>` | none | 3D LUT (`.cube`). |
-| `--overlay <path>` | none | Image composited over every clip. |
-| `--overlay-opacity <0-1>` | `1.0` | Overlay alpha. |
+| `--attribution <text>` | none | Burns a credit line into a corner of every clip. |
+| `--attribution-position <pos>` | `bottom-right` | `bottom-right`, `bottom-left`, `top-left`, `top-right`, `top`, `bottom`, `center`. |
 
 Darkening is multiplicative and anchored on the black level, so shadow detail is preserved on dark
 source material. The defaults reduce brightness and saturation so the footage sits behind
 narration and on-screen text rather than competing with it.
+
+Every on/off look option has a `--no-` counterpart — `--no-grayscale`, `--no-vignette`,
+`--no-mirror`, `--no-flip` — so a profile that switches one on can be switched back off from the
+command line. A bare flag can only say "on", which would otherwise make a profile's choice
+permanent. Giving both forms of the same option is refused rather than silently resolved.
+
+`--grayscale` and `--saturation` set the same thing, so passing `--saturation` explicitly wins;
+the plan summary reports whichever one is actually applied.
+
+`--speed` changes how much source a clip of a given output length consumes, and clip selection
+reserves the larger figure. At `--speed 2` a `5s` clip needs ten seconds of contiguous eligible
+footage, so a constrained source yields fewer clips than it would at normal speed and the
+shortfall is reported. This is what keeps a retimed clip from running past the end of its file,
+past a `--range` or `--exclude` boundary, or over its neighbor — and what makes the source-usage
+figures count the footage actually read.
+
+`--fade-edges` is not the same thing as `--transition`. A transition overlaps two neighboring
+clips and forces the filter-graph stitcher; `--fade-edges` applies within each clip during
+extraction, so it does not by itself prevent the stream-copy join (which needs `--transition none`
+together with both fades at `0`). It is applied at both ends of every clip, so it may be at most
+half of the shortest clip — that is, half of `--splice` less `--splice-jitter`.
+
+`--attribution` takes arbitrary text. Titles containing `:`, `'`, `%`, `,` or brackets are handled
+correctly:
+
+```bash
+rcc generate -i heat.mkv -d 90s \
+  --attribution "Clip from Heat (1995), dir. Michael Mann" \
+  --attribution-position bottom -o bg.mp4
+```
+
+The line is drawn after every other look stage, so it is never blurred, grained, pixelated, or
+overlaid away. Note that an attribution is a courtesy and a signal of good faith, not a license;
+see [LEGAL.md](LEGAL.md).
 
 ### Transitions
 
@@ -278,12 +381,58 @@ removes the last encode pass entirely.
 | `--codec <name>` | `h264` | `h264` or `hevc`. |
 | `-q, --quality <0-51>` | `20` | CRF for software encoders, CQ for NVENC. Lower is better. |
 | `--preset <name>` | encoder default | `medium` for x264, `p5` for NVENC. |
-| `--audio` | off | Keep source audio. Off by default; output is intended for use under narration. |
 | `--hwdecode` | off | CUDA decode. Fixed setup cost; benefits long sources only. |
 | `-j, --parallelism <n>` | `4` | Concurrent extraction processes. Capped at 8 for NVENC. |
 
 `-q 20` is high quality for background footage. `-q 26` typically halves file size with no visible
 difference at normal viewing size.
+
+`-q` is not comparable across encoders. It is a CRF for x264 and x265 and a CQ for NVENC, and the
+two scales are not the same scale: at `-q 20` NVENC typically writes around twice the bitrate x264
+does for comparable quality. Since `--encoder auto` prefers NVENC where it exists, the same command
+can produce noticeably larger files on one machine than another. Where output size matters more
+than encode time, `--encoder x264` with a higher `-q` is the better trade.
+
+### Audio
+
+Output is muted by default: generated footage is intended to sit under narration.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--audio` | muted | Bare, keeps the source audio. With a path, muxes that file instead. |
+| `--audio-offset <dur>` | `0` | Start this far into the external track. |
+| `--audio-volume <m>` | `1.0` | Linear gain on the muxed track. |
+| `--match-audio` | off | Take the render's length from the track instead of from `--duration`. |
+
+```bash
+# Keep the film's own audio
+rcc generate -i movie.mkv -d 90s --audio -o bg.mp4
+
+# Lay the footage under a music bed, cut to exactly its length
+rcc generate -i movie.mkv --audio bed.wav --match-audio -o bg.mp4
+
+# Start 30s into the track, at half volume
+rcc generate -i movie.mkv -d 2m --audio bed.wav --audio-offset 30s --audio-volume 0.5 -o bg.mp4
+```
+
+`--match-audio` derives the target duration before the clip cadence is planned, so the footage is
+built to the length of the track rather than trimmed to it. It cannot be combined with
+`--duration`, since both set the same thing.
+
+With an external track the per-clip source audio is not extracted at all, and muxing does not cost
+a video re-encode: only the audio is encoded, so a render already taking the stream-copy join
+(`--transition none` with both fades at `0`) keeps it.
+
+`--fade-in` and `--fade-out` fade the audio on exactly the same schedule as the picture, so a bed
+does not carry on at full volume over a frame fading to black. A track shorter than the render is
+padded with silence rather than shortening the video, and the shortfall is reported as a warning;
+a track longer than the render is trimmed to it.
+
+The muxed track is always written as stereo. A mono source is therefore upmixed, and FFmpeg's
+upmix is energy-preserving: the same signal coming from two speakers instead of one is attenuated
+by 3 dB so it does not get louder in the process. That is the correct behavior, but it does mean
+a mono bed measures about 3 dB below where it started. `--audio-volume 1.4` restores it if the
+level matters.
 
 ### Analysis
 
@@ -304,7 +453,18 @@ difference at normal viewing size.
 
 The manifest records the seed, strategy, encoder, per-source usage, and every clip's start and
 duration. `distinctSourceSeconds` is the union of referenced ranges, so repeats and overlaps count
-once.
+once; `sourceUsageFraction` expresses it as a share of `availableSourceSeconds`, and
+`peakSourceUsageFraction` gives the largest share taken from any single source, which is the figure
+the guardrail tests. Each entry in `sourceUsage` carries the same breakdown for one title:
+`totalSeconds` is screen time including repeats, `distinctSeconds` the union, and `fraction` the
+share of that title's `availableSeconds`. Sources that were supplied but never drawn from appear
+with a fraction of zero, since "we had this and took none of it" is part of the record.
+
+A render that makes a sound also carries an `audio` block, so `muted: false` is never ambiguous
+between "kept each clip's own audio" and "muxed a file". For an external track it records the
+`track`, plus `offsetSeconds`, `volume` and `matchedDuration` where they apply — which is also what
+explains a `targetSeconds` that came from the audio rather than from `--duration`. Muted renders
+have no `audio` block at all, since `muted` already says everything there is to say.
 
 ### Limiting source footage used
 
@@ -335,7 +495,47 @@ viewer is watching directly.
 With `--cues`, the cap limits how many cues are used and each cue produces a full
 `--splice`-length clip.
 
-Bounding source usage is also relevant to fair use; see [LEGAL.md](LEGAL.md).
+#### The source-usage guardrail
+
+Every plan reports the share of each source it consumes, and warns above a threshold:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--max-source-percent <0-100>` | `10` | Warn above this share of any one source. `0` disables. |
+| `--strict-source-limit` | off | Fail instead of warning. |
+
+```
+Source used | 13.7s of footage, 7.6% of the source (vs 65.6s of screen time)
+```
+
+The measurement is the **union of the referenced source ranges**, not clip count multiplied by clip
+length. With `--max-clips` repeating a small pool those two numbers differ by a large factor: a
+render of 15 slots built from 3 clips occupies 65.6s of screen time but touches only 13.7s of the
+film. Counting slots would overstate consumption more than fourfold and would refuse renders that
+in fact use a twentieth of a feature. Overlapping clips are likewise counted once.
+
+The limit applies **per source, not to the pool**. With several inputs the heaviest is the one
+reported and the one tested:
+
+```
+Source used | 41.2s of footage, peak 62.1% of heat.mkv (vs 90s of screen time)
+```
+
+Measuring the pool instead would let the check be defeated by supplying footage the render never
+touches — 80% of one film averaged against nine untouched hours reports 8%. It is also simply the
+honest reading of the question: the concern is how much of *a work* was used, and a stack of
+separate works has no combined runtime that means anything. With a single source, which is the
+common case, the two are identical.
+
+The default is to warn rather than fail. A hard limit at 10% refuses an entirely ordinary short
+render — a 30-second background track cut from a three-minute source is 16.7% — so the exposure is
+surfaced without breaking the common case. `--strict-source-limit` opts into refusal and exits `2`.
+
+The three ways to lower the figure are `--max-clips`, a shorter `--duration`, and more sources —
+though more sources only helps if the render actually draws on them.
+
+Bounding source usage is also relevant to fair use, though a small proportion is not a safe harbor
+and this is not legal advice; see [LEGAL.md](LEGAL.md).
 
 ---
 
@@ -408,6 +608,11 @@ Settings are read from, in increasing precedence:
       "Height": 1080,
       "Darken": 0.4,
       "Saturation": 0.75,
+      "Grayscale": false,
+      "Sharpen": 0.4,
+      "FadeEdgesSeconds": 0.25,
+      "Attribution": "Clip used for commentary",
+      "AttributionPosition": "BottomRight",
       "Transition": "Fade",
       "TransitionSeconds": 0.5
     }
@@ -415,7 +620,13 @@ Settings are read from, in increasing precedence:
 }
 ```
 
-The analysis cache defaults to `~/.local/share/reviewclips/analysis`. Entries are keyed on file
+A profile may set any of the format, look, cadence, transition, selection and encoding fields;
+anything it leaves out keeps the built-in default, and an explicit command-line option always wins.
+For the on/off look options that means the `--no-` form: a profile setting `"Grayscale": true` is
+turned off with `--no-grayscale`, since a bare `--grayscale` can only say "on".
+
+The analysis cache defaults to `~/.local/share/reviewclips/analysis`. `rcc doctor --cache` reports
+its size, and `rcc doctor --clear-cache` empties it. Entries are keyed on file
 path, size, modification time, and all analysis settings, so changing any of those invalidates
 them automatically. Deleting the directory is safe.
 
@@ -427,7 +638,7 @@ them automatically. Deleting the directory is safe.
 | --- | --- |
 | `0` | Success |
 | `1` | Argument parse error |
-| `2` | Invalid arguments or configuration |
+| `2` | Invalid arguments or configuration, including a `--strict-source-limit` refusal |
 | `3` | No usable clips could be selected |
 | `4` | FFmpeg or ffprobe failed or was not found |
 | `70` | Unexpected error |
@@ -442,7 +653,7 @@ output file is left behind.
 
 1. **Probe** — `ffprobe` reports duration, dimensions, frame rate, pixel aspect ratio, color
    transfer characteristics, and chapter markers for each source.
-2. **Analyse** — one FFmpeg pass, decimated to 4 fps and downscaled to 320px wide, produces scene
+2. **Analyze** — one FFmpeg pass, decimated to 4 fps and downscaled to 320px wide, produces scene
    cut timestamps, a per-frame motion curve, and the black and frozen ranges. Cached on disk.
 3. **Select** — clips are chosen by the active strategy from the eligible ranges, which exclude the
    head/tail trims, any `--exclude` ranges, chapters skipped by title, and detected black and
@@ -480,35 +691,12 @@ the output length matches the request.
 
 ---
 
-## Performance
-
-Measured on an RTX 5090 with NVENC, using a 1h39m 1080p source.
-
-| Operation | Time |
-| --- | --- |
-| First analysis of a source | 40s (~148x realtime) |
-| Subsequent runs (cached) | ~0.2s |
-| 16-minute render, 210 clips | 2m15s |
-| 16-minute render, `--max-clips 50` | 1m31s |
-| 90-second render | ~10s |
-
-Notes:
-
-- Analysis dominates the first run against any source and is cached thereafter.
-- `--transition none` with both fades at `0` removes the final encode pass.
-- `--fit blur-pad` is significantly slower than other fit modes; `gblur` runs on the CPU.
-- `--hwdecode` has a fixed CUDA setup cost that can exceed its benefit on short reads. It is off by
-  default and worth benchmarking before enabling.
-- `-q 26` roughly halves output size versus the `-q 20` default.
-
----
-
 ## Copyright and sourcing
 
 Using material you do not own carries constraints that are widely misunderstood. See
 **[LEGAL.md](LEGAL.md)** for the detail. In brief:
 
-- Clip length is not a safe harbour. US copyright law has no de minimis duration threshold, and
+- Clip length is not a safe harbor. US copyright law has no de minimis duration threshold, and
   amount is assessed in aggregate rather than per clip.
 - Muting, darkening, and blurring do not change copyright status.
 - Fair use for criticism is strongest when a clip illustrates a specific point. Decorative
@@ -547,58 +735,6 @@ dotnet test
 Integration tests synthesize their inputs with FFmpeg's `lavfi` sources, so the suite requires no
 sample media and runs anywhere. Tests are skipped if FFmpeg is unavailable.
 
-### Implementation notes
+### Implementation Notes
 
-Non-obvious decisions, each covered by regression tests.
-
-**FFmpeg is invoked as a subprocess, not through a wrapper library.** The tool depends on direct
-control of NVENC parameters and filter graphs, which wrapper libraries abstract away. Arguments are
-passed via `ProcessStartInfo.ArgumentList` rather than a command string, since media paths commonly
-contain spaces, quotes, and brackets.
-
-**Analysis metadata is read from stdout, not a file.** FFmpeg reopens `metadata=print:file=`
-targets in truncate mode when the filter graph reinitialises, which any mid-stream format change
-triggers. A file target therefore retains only the frames after the final reinitialisation.
-Progress is derived from the metadata timestamps, since `-progress` would contend for stdout.
-
-**Detector output requires `info` log level.** `scdet`, `blackdetect`, and `freezedetect` report on
-stderr at `info`. Running analysis with `-loglevel error` silently discards all of it.
-
-**Tone mapping tags frames with `setparams` before `zscale`.** `zscale` fails with "no path between
-colorspaces" when transfer, matrix, or primaries is unspecified, which is common in HDR rips with
-partial metadata. `zscale`'s own `tin`/`min`/`pin` options do not resolve it.
-
-**Darkening uses `lutyuv=y=minval+(val-minval)*k`.** `eq=brightness` is an additive offset and
-crushes shadows to black on dark source material. `colorlevels` is equivalent numerically but
-segfaults FFmpeg 8.1 at this position in the graph. `lutyuv` is a lookup table, bit-depth agnostic,
-and luma-only, so chroma is unaffected.
-
-**Clip selection is stratified, not greedy.** Score-greedy selection with a relaxing minimum gap
-degrades to "take the N highest scores" when spacing cannot be satisfied, and since scores are
-spatially correlated the result clusters into a few seconds of source. A non-overlap floor is
-enforced and never relaxed.
-
-**Chapter skipping matches titles, never positions.** "The last chapter is the credits" is true
-often enough to be tempting and wrong often enough to put a credit crawl in the output, so it is not
-inferred. Only a title that names the material triggers an exclusion, which means the feature does
-nothing at all on the many rips whose chapters are named `Chapter 01` onwards — an honest no-op is
-preferable to a heuristic that silently discards an act of the film. Titles that only restate the
-chapter number are recognised as such and never matched, so a pattern like `*1*` cannot catch them.
-Chapter ranges are subtracted unpadded, unlike detected black stretches, because a container states
-its boundaries exactly; clips still cannot bleed across one, since a candidate window must fit
-entirely inside a single eligible range.
-
-**Interruption uses `PosixSignalRegistration`, not `Console.CancelKeyPress`.** The latter handles
-only SIGINT and never sees SIGTERM, which is what `kill`, systemd, Docker, and CI send. Handlers
-dispatch cancellation to the thread pool, because `CancellationTokenSource.Cancel()` runs
-callbacks synchronously on the calling thread and would otherwise run pipeline cancellation on the
-signal thread.
-
-**Output length is solved iteratively.** Cross-transitions overlap two clips each, so N clips lose
-(N-1) transition durations, and the clip count depends on how much material is planned.
-`SplicePlanner.PlanForOutput` and `ClipSequencer.FillForOutput` resolve this by fixed-point
-iteration.
-
-**Clips are normalized at extraction.** Identical geometry, frame rate, pixel format, GOP, and
-timebase are what permit the stream-copy stitch path. Anamorphic sources are corrected to square
-pixels before any aspect-ratio arithmetic, and variable frame rate sources are forced to CFR.
+Non-obvious decisions, each covered by regression tests, found at `./docs/Implementation.md`.

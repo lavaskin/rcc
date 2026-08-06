@@ -65,7 +65,7 @@ public sealed record MediaAnalysis
 
     public required AnalysisSettings Settings { get; init; }
 
-    public DateTimeOffset AnalysedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset AnalyzedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>Ranges that should never be sampled: fades to black and static shots.</summary>
     public IEnumerable<TimeRange> UnusableRanges => BlackRanges.Concat(FreezeRanges);

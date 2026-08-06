@@ -11,12 +11,8 @@ using Spectre.Console;
 namespace ReviewClips.Cli.Commands;
 
 /// <summary>
-/// Renders several different variants in one run.
-/// <para>
-/// This is the workflow-shaped command: one podcast episode usually needs a handful of
-/// interchangeable background tracks. Because the analysis cache is warm after the first
-/// variant, the rest are much faster than running <c>generate</c> repeatedly.
-/// </para>
+/// Renders several variants in one run. The analysis cache is warm after the first variant, so
+/// the rest are much faster than running <c>generate</c> repeatedly.
 /// </summary>
 internal sealed class BatchCommand
 {
@@ -84,16 +80,21 @@ internal sealed class BatchCommand
             var seed = unchecked(baseSeed + (i * 7919));
             var variant = template with { Selection = template.Selection with { Seed = seed } };
 
-            var stem = fixedStem
-                ?? Path.GetFileNameWithoutExtension(ClipRequestBuilder.DeriveOutputName(variant, profileName));
-
-            var output = Path.Combine(directory, $"{stem}-{i + 1:D2}.mp4");
-            var request = variant with { OutputPath = Path.GetFullPath(output) };
-
             console.MarkupLine($"[bold]variant {i + 1}/{count}[/] {Styles.Faint($"seed {seed}")}");
 
+            // Planned before the name is chosen, as in `generate`: the derived stem states the
+            // target duration, which --match-audio settles during planning.
             var observer = new ConsoleRenderObserver(console);
-            var plan = await pipeline.PlanAsync(request, observer, cancellationToken);
+            var plan = await pipeline.PlanAsync(variant, observer, cancellationToken);
+
+            var stem = fixedStem
+                ?? Path.GetFileNameWithoutExtension(
+                    ClipRequestBuilder.DeriveOutputName(plan.Request, profileName));
+
+            var output = Path.GetFullPath(Path.Combine(directory, $"{stem}-{i + 1:D2}.mp4"));
+
+            plan = plan with { Request = plan.Request with { OutputPath = output } };
+            var request = plan.Request;
 
             if (request.DryRun)
             {

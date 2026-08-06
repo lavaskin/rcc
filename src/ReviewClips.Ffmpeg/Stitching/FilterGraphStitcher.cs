@@ -8,10 +8,7 @@ namespace ReviewClips.Ffmpeg.Stitching;
 
 /// <summary>
 /// Joins segments through a filter graph, applying cross-transitions and top-level fades.
-/// <para>
-/// This costs one re-encode pass, but the inputs are already small and normalised, so on a
-/// hardware encoder it is quick. Handles anything the stream-copy path cannot.
-/// </para>
+/// Costs one re-encode pass; handles anything the stream-copy path cannot.
 /// </summary>
 public sealed class FilterGraphStitcher : IStitcher
 {
@@ -46,7 +43,8 @@ public sealed class FilterGraphStitcher : IStitcher
             BuildArguments(request, plan),
             plan.TotalDuration,
             progress,
-            cancellationToken);
+            cancellationToken,
+            requireFrames: true);
     }
 
     public IReadOnlyList<string> DescribeArguments(StitchRequest request)
@@ -64,18 +62,66 @@ public sealed class FilterGraphStitcher : IStitcher
             arguments.AddRange(["-i", path]);
         }
 
-        var includeAudio = !request.Mute;
-        var graph = plan.BuildGraph(includeAudio);
+        var audio = request.Audio;
+
+        // The external track goes in after every segment, so its index is the segment count.
+        var externalAudioIndex = default(int?);
+
+        if (audio.HasExternalTrack)
+        {
+            if (audio.Offset > TimeSpan.Zero)
+            {
+                arguments.AddRange(["-ss", Number(audio.Offset.TotalSeconds)]);
+            }
+
+            arguments.AddRange(["-i", audio.ExternalPath!]);
+            externalAudioIndex = request.SegmentPaths.Count;
+        }
+
+        // Only per-segment audio needs graph work: an external track is one continuous stream,
+        // mapped straight through, with no neighboring clips to acrossfade into.
+        var graph = plan.BuildGraph(request.UsesSegmentAudio);
 
         arguments.AddRange(["-filter_complex", graph]);
         arguments.AddRange(["-map", $"[{StitchPlan.VideoOutputLabel}]"]);
 
-        // Without this FFmpeg copies chapters from the first input, so the finished file would
-        // inherit whatever markers segment one happened to carry. The extractor already strips
-        // them; this makes the guarantee hold for the output regardless of the inputs.
+        // Without this FFmpeg copies chapters from the first input. The extractor already strips
+        // them; this holds the guarantee for the output regardless of the inputs.
         arguments.AddRange(["-map_chapters", "-1"]);
 
-        if (includeAudio)
+        if (externalAudioIndex is { } audioIndex)
+        {
+            // ':a:0' not ':a': the bare specifier matches every audio stream in the input, so a
+            // track with commentary or several dubs would contribute all of them, each at -b:a.
+            arguments.AddRange(["-map", $"{audioIndex}:a:0"]);
+            arguments.AddRange(["-c:a", "aac"]);
+            arguments.AddRange(["-b:a", $"{request.EncoderOptions.AudioBitrateKbps}k"]);
+            arguments.AddRange(["-ac", "2"]);
+
+            // -filter:a rather than a filter_complex branch: the track is mapped straight from
+            // an input and never meets the segment graph, so it needs no labels.
+            var audioFilters = new List<string>(3);
+
+            if (audio.AltersVolume)
+            {
+                audioFilters.Add($"volume={Number(audio.Volume)}");
+            }
+
+            // Pads with silence so the track can never be the shorter stream, which would make
+            // -shortest below cut the video short. Ahead of the fades, so the closing afade
+            // still has a stream to act on at the timestamp it was computed for.
+            audioFilters.Add("apad");
+
+            // Matched to the video fades so the bed does not play on over a picture fading out.
+            audioFilters.AddRange(plan.AudioFadeFilters());
+
+            arguments.AddRange(["-filter:a", string.Join(',', audioFilters)]);
+
+            // apad leaves the audio effectively endless, so this always ends the file on the
+            // video: a longer track is trimmed to the render, a shorter one filled with silence.
+            arguments.Add("-shortest");
+        }
+        else if (request.UsesSegmentAudio)
         {
             arguments.AddRange(["-map", $"[{StitchPlan.AudioOutputLabel}]"]);
             arguments.AddRange(["-c:a", "aac"]);
@@ -148,6 +194,47 @@ public sealed record StitchPlan
         }
     }
 
+    /// <summary>The opening fade, after clamping. Zero when there is none.</summary>
+    public TimeSpan FadeInDuration => ClampFade(_transition.FadeIn, TotalDuration);
+
+    /// <summary>The closing fade, after clamping. Zero when there is none.</summary>
+    public TimeSpan FadeOutDuration => ClampFade(_transition.FadeOut, TotalDuration);
+
+    public TimeSpan FadeOutStart
+    {
+        get
+        {
+            var start = TotalDuration - FadeOutDuration;
+            return start > TimeSpan.Zero ? start : TimeSpan.Zero;
+        }
+    }
+
+    /// <summary>
+    /// True when the render fades at either end. Exposed so the audio can be faded on exactly
+    /// the same schedule.
+    /// </summary>
+    public bool HasFades => FadeInDuration > TimeSpan.Zero || FadeOutDuration > TimeSpan.Zero;
+
+    /// <summary>
+    /// The <c>afade</c> filters matching the video fades, or an empty list when there are none.
+    /// </summary>
+    public IReadOnlyList<string> AudioFadeFilters()
+    {
+        var filters = new List<string>(2);
+
+        if (FadeInDuration > TimeSpan.Zero)
+        {
+            filters.Add($"afade=t=in:st=0:d={Seconds(FadeInDuration)}");
+        }
+
+        if (FadeOutDuration > TimeSpan.Zero)
+        {
+            filters.Add($"afade=t=out:st={Seconds(FadeOutStart)}:d={Seconds(FadeOutDuration)}");
+        }
+
+        return filters;
+    }
+
     public static StitchPlan Create(StitchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -157,9 +244,8 @@ public sealed record StitchPlan
 
         if (requested > TimeSpan.Zero && durations.Count > 1)
         {
-            // xfade consumes the transition from both neighbours. If it is not comfortably
-            // shorter than the shortest clip, the graph either errors or eats a clip whole,
-            // so clamp to half the shortest segment.
+            // xfade consumes the transition from both neighbors. If it is not comfortably
+            // shorter than the shortest clip, the graph either errors or eats a clip whole.
             var shortest = durations.Min();
             var ceiling = TimeSpan.FromSeconds(shortest.TotalSeconds / 2);
             if (requested > ceiling)
@@ -214,9 +300,7 @@ public sealed record StitchPlan
 
     private void BuildVideoChains(List<string> chains)
     {
-        var fadeIn = _transition.FadeIn;
-        var fadeOut = _transition.FadeOut;
-        var needsFades = fadeIn > TimeSpan.Zero || fadeOut > TimeSpan.Zero;
+        var needsFades = HasFades;
 
         string joined;
 
@@ -256,20 +340,15 @@ public sealed record StitchPlan
         }
 
         var filters = new List<string>(2);
-        var total = TotalDuration;
 
-        if (fadeIn > TimeSpan.Zero)
+        if (FadeInDuration > TimeSpan.Zero)
         {
-            filters.Add($"fade=t=in:st=0:d={Seconds(ClampFade(fadeIn, total))}");
+            filters.Add($"fade=t=in:st=0:d={Seconds(FadeInDuration)}");
         }
 
-        if (fadeOut > TimeSpan.Zero)
+        if (FadeOutDuration > TimeSpan.Zero)
         {
-            var duration = ClampFade(fadeOut, total);
-            var start = total - duration;
-            filters.Add(
-                $"fade=t=out:st={Seconds(start > TimeSpan.Zero ? start : TimeSpan.Zero)}"
-                + $":d={Seconds(duration)}");
+            filters.Add($"fade=t=out:st={Seconds(FadeOutStart)}:d={Seconds(FadeOutDuration)}");
         }
 
         chains.Add($"[{joined}]{string.Join(',', filters)}[{VideoOutputLabel}]");
@@ -277,9 +356,14 @@ public sealed record StitchPlan
 
     private void BuildAudioChains(List<string> chains)
     {
+        // Where the whole-render fades land. anull when there are none, keeping the chain shape
+        // identical either way.
+        var fades = AudioFadeFilters();
+        var tail = fades.Count > 0 ? string.Join(',', fades) : "anull";
+
         if (_durations.Count == 1)
         {
-            chains.Add($"[0:a]anull[{AudioOutputLabel}]");
+            chains.Add($"[0:a]{tail}[{AudioOutputLabel}]");
             return;
         }
 
@@ -295,12 +379,19 @@ public sealed record StitchPlan
                 current = next;
             }
 
-            chains.Add($"[{current}]anull[{AudioOutputLabel}]");
+            chains.Add($"[{current}]{tail}[{AudioOutputLabel}]");
             return;
         }
 
         var inputs = string.Concat(Enumerable.Range(0, _durations.Count).Select(i => $"[{i}:a]"));
-        chains.Add($"{inputs}concat=n={_durations.Count}:v=0:a=1[{AudioOutputLabel}]");
+        var joined = fades.Count > 0 ? "ca" : AudioOutputLabel;
+
+        chains.Add($"{inputs}concat=n={_durations.Count}:v=0:a=1[{joined}]");
+
+        if (fades.Count > 0)
+        {
+            chains.Add($"[{joined}]{tail}[{AudioOutputLabel}]");
+        }
     }
 
     private static TimeSpan ClampFade(TimeSpan fade, TimeSpan total)

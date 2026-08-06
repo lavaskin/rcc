@@ -11,12 +11,8 @@ using ReviewClips.Core.Primitives;
 namespace ReviewClips.Ffmpeg.Analysis;
 
 /// <summary>
-/// Persists analysis to JSON under the user's cache directory.
-/// <para>
-/// This is what makes the tool pleasant to iterate with. Scanning a feature film is the
-/// slowest part of a render by a wide margin, and you will usually generate many different
-/// background tracks from the same title. Every run after the first reuses this.
-/// </para>
+/// Persists analysis to JSON under the user's cache directory. Scanning a source is by far the
+/// slowest part of a render, so every run after the first against the same title reuses this.
 /// <para>
 /// The cache key covers the file path, size, modification time and every analysis setting, so
 /// re-encoding a source or changing a threshold invalidates it automatically.
@@ -42,12 +38,13 @@ public sealed class JsonAnalysisCache : IAnalysisCache
     public static string DefaultCacheDirectory()
     {
         var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrEmpty(baseDir))
-        {
-            baseDir = Path.GetTempPath();
-        }
 
-        return Path.Combine(baseDir, "reviewclips", "analysis");
+        // LocalApplicationData is already per-user on both platforms. It comes back empty in a
+        // container with no HOME set, and the fallback must then supply the per-user scoping
+        // itself rather than sharing a directory with every other account on the machine.
+        return string.IsNullOrEmpty(baseDir)
+            ? Path.Combine(Core.Primitives.ScratchPaths.Root, "analysis")
+            : Path.Combine(baseDir, "reviewclips", "analysis");
     }
 
     public string CacheDirectory => _root;
@@ -113,7 +110,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-            // Write to a temporary file then move, so a cancelled run cannot leave a
+            // Write to a temporary file then move, so a canceled run cannot leave a
             // half-written cache entry that would later fail to parse.
             var temp = path + ".tmp";
             await using (var stream = File.Create(temp))
@@ -183,7 +180,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
         public double DurationSeconds { get; init; }
 
         [JsonPropertyName("analysedAt")]
-        public long AnalysedAtUnix { get; init; }
+        public long AnalyzedAtUnix { get; init; }
 
         [JsonPropertyName("cuts")]
         public double[] SceneCuts { get; init; } = [];
@@ -212,12 +209,12 @@ public sealed class JsonAnalysisCache : IAnalysisCache
                 SourceSizeBytes = analysis.SourceSizeBytes,
                 SourceModifiedUnix = analysis.SourceModifiedUtc.ToUnixTimeSeconds(),
                 DurationSeconds = analysis.Duration.TotalSeconds,
-                AnalysedAtUnix = analysis.AnalysedAtUtc.ToUnixTimeSeconds(),
-                SceneCuts = analysis.SceneCuts.Select(c => Round(c.TotalSeconds)).ToArray(),
+                AnalyzedAtUnix = analysis.AnalyzedAtUtc.ToUnixTimeSeconds(),
+                SceneCuts = [.. analysis.SceneCuts.Select(c => Round(c.TotalSeconds))],
                 BlackRanges = Flatten(analysis.BlackRanges),
                 FreezeRanges = Flatten(analysis.FreezeRanges),
-                MotionTimes = samples.Select(s => Round(s.AtSeconds)).ToArray(),
-                MotionValues = samples.Select(s => Math.Round(s.Mafd, 4)).ToArray(),
+                MotionTimes = [.. samples.Select(s => Round(s.AtSeconds))],
+                MotionValues = [.. samples.Select(s => Math.Round(s.Mafd, 4))],
             };
         }
 
@@ -233,7 +230,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
             Motion = new MotionCurve(
                 MotionTimes.Zip(MotionValues, (t, v) => new MotionSample(t, v))),
             Settings = settings,
-            AnalysedAtUtc = DateTimeOffset.FromUnixTimeSeconds(AnalysedAtUnix),
+            AnalyzedAtUtc = DateTimeOffset.FromUnixTimeSeconds(AnalyzedAtUnix),
         };
 
         private static double Round(double value) => Math.Round(value, 3);

@@ -6,16 +6,22 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Pipeline;
 
 /// <summary>
-/// Orchestrates a render: probe, analyse, select, extract in parallel, stitch.
+/// Orchestrates a render: probe, analyze, select, extract in parallel, stitch.
 /// Owns no FFmpeg knowledge; everything concrete arrives through the abstractions.
 /// </summary>
 public sealed class RenderPipeline
 {
     /// <summary>
-    /// Consumer NVIDIA drivers cap simultaneous NVENC sessions. Exceeding the cap fails the
-    /// encode outright, so hardware parallelism is clamped regardless of what was requested.
+    /// Consumer NVIDIA drivers cap simultaneous NVENC sessions; exceeding it fails the encode
+    /// outright, so hardware parallelism is clamped regardless of what was requested.
     /// </summary>
     private const int MaxHardwareSessions = 8;
+
+    /// <summary>
+    /// How far an external track may fall short of the render before it is remarked upon. Wide
+    /// enough to absorb frame quantization and the splice planner's convergence tolerance.
+    /// </summary>
+    private static readonly TimeSpan ShortAudioTolerance = TimeSpan.FromSeconds(0.25);
 
     private readonly IMediaProbe _probe;
     private readonly IMediaAnalyzer _analyzer;
@@ -83,7 +89,7 @@ public sealed class RenderPipeline
         }
 
         // An explicit --skip-chapter that matches nothing is almost always a typo or a wrong
-        // assumption about the titles, and silently doing nothing is the worst outcome.
+        // assumption about the titles; silently doing nothing is the worst outcome.
         if (request.Selection.SkipChapterPatterns.Count > 0
             && !infos.Any(i => Media.ChapterFilter.Matching(i.Chapters, request.Selection.SkipChapterPatterns).Count > 0))
         {
@@ -92,9 +98,43 @@ public sealed class RenderPipeline
                 : "--skip-chapter was given, but none of the sources carry chapter markers.");
         }
 
-        // 2. Plan the cadence up front so both selection and stitching agree on lengths.
-        // The target is the runtime of the finished file, so transition overlap is compensated
-        // here rather than silently shortening the result.
+        // 2. When the render is to match an external track, its length replaces --duration.
+        // Must precede cadence planning, which derives the number and size of the splices from
+        // the target. The request itself is rebound rather than threading a local through, so
+        // the plan, the summary and the manifest all report the duration the render actually has.
+        if (request.Audio.HasExternalTrack)
+        {
+            if (request.Audio.MatchDuration)
+            {
+                var matched = await ResolveAudioTargetAsync(request.Audio, cancellationToken);
+                request = request with { TargetDuration = matched };
+
+                observer.OnPhaseStarted(
+                    RenderPhase.Probing,
+                    $"matching audio: {matched.TotalSeconds:0.#}s");
+            }
+            else
+            {
+                // The stitcher pads a short track with silence, which leaves no trace in the
+                // file, so this is the only point at which both lengths are known. A warning
+                // rather than a failure: nothing depends on the answer as it does under
+                // --match-audio, so an unreadable duration must not fail a render.
+                var usable = await TryResolveAudioLengthAsync(request.Audio, cancellationToken);
+
+                if (usable is { } available && available + ShortAudioTolerance < request.TargetDuration)
+                {
+                    warnings.Add(
+                        $"'{Path.GetFileName(request.Audio.ExternalPath)}' supplies "
+                        + $"{available.TotalSeconds:0.#}s of audio for a "
+                        + $"{request.TargetDuration.TotalSeconds:0.#}s render; the rest is silent. "
+                        + "Use --match-audio to size the render to the track instead.");
+                }
+            }
+        }
+
+        // 3. Plan the cadence up front so both selection and stitching agree on lengths. The
+        // target is the runtime of the finished file, so transition overlap is compensated here
+        // rather than silently shortening the result.
         var durations = SplicePlanner.PlanForOutput(
             request.TargetDuration,
             request.SpliceLength,
@@ -110,7 +150,7 @@ public sealed class RenderPipeline
 
         var selector = _selectorFactory.Create(request.Selection.Strategy);
 
-        // 3. Analyse only when the strategy actually needs it.
+        // 4. Analyze only when the strategy actually needs it.
         var needsAnalysis = selector.RequiresAnalysis || request.Selection.RequiresAnalysis;
         var sources = new List<SourceMedia>(infos.Count);
 
@@ -130,7 +170,7 @@ public sealed class RenderPipeline
             sources.AddRange(infos.Select(i => new SourceMedia(i, null)));
         }
 
-        // 4. Select.
+        // 5. Select.
         observer.OnPhaseStarted(RenderPhase.Selecting, selector.Strategy.ToString());
         SelectionContext context = new()
         {
@@ -138,11 +178,15 @@ public sealed class RenderPipeline
             Options = request.Selection,
             SegmentDurations = durations,
             Random = random,
+
+            // --speed is a look option, but it decides how much source a clip of a given output
+            // length consumes, so selection cannot place clips without it. The only place it
+            // crosses over; everything downstream reads it off the segment.
+            SpeedFactor = request.Look.Speed,
         };
 
         // When the distinct-clip pool is capped, select only that many and repeat them to fill
-        // the runtime. Selection therefore runs against the smaller pool, which also makes the
-        // spacing constraints easier to satisfy.
+        // the runtime; the smaller pool also makes the spacing constraints easier to satisfy.
         var distinctWanted = request.MaxDistinctClips is { } cap && cap < durations.Count
             ? Math.Max(1, cap)
             : durations.Count;
@@ -151,9 +195,9 @@ public sealed class RenderPipeline
         {
             if (request.Selection.Strategy == SelectionStrategy.Cues)
             {
-                // Cues already define the pool, so the cap only limits how many of them are
-                // used. Each cue gets a full splice-length clip rather than a share of the
-                // runtime, because the runtime is filled by repetition instead.
+                // Cues already define the pool, so the cap only limits how many are used. Each
+                // cue gets a full splice-length clip rather than a share of the runtime, because
+                // repetition fills the runtime instead.
                 var used = Math.Min(request.Selection.Cues.Count, distinctWanted);
 
                 context = context with
@@ -172,24 +216,39 @@ public sealed class RenderPipeline
                 context = context with { SegmentDurations = durations.Take(distinctWanted).ToList() };
             }
         }
+        else if (request.Selection.Strategy == SelectionStrategy.Cues)
+        {
+            // Uncapped cues: the clip count is the cue count, not the count the splice cadence
+            // produced, so the runtime has to be divided over that number. The splice-derived
+            // budget would overshoot by every transition the cue clips do not pay for.
+            context = context with
+            {
+                SegmentDurations = SplicePlanner.PlanEqualForOutput(
+                    request.TargetDuration,
+                    request.Selection.Cues.Count,
+                    request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero),
+            };
+        }
 
         var segments = selector.SelectSegments(context);
 
         if (segments.Count == 0)
         {
-            throw new RenderPlanningException(BuildNoSegmentsMessage(request, sources));
+            throw new RenderPlanningException(BuildNoSegmentsMessage(request, context));
         }
 
         // Cue-driven renders legitimately produce one segment per cue, so report against that
-        // rather than against the splice-derived count.
-        // For cues the expectation is one clip per cue, capped by --max-clips when set.
+        // rather than the splice-derived count, capped by --max-clips when set.
         var requestedCount = request.Selection.Strategy == SelectionStrategy.Cues
             ? Math.Min(request.Selection.Cues.Count, distinctWanted)
             : distinctWanted;
 
         observer.OnSegmentsSelected(segments.Count, requestedCount);
 
-        if (segments.Count < requestedCount && request.Selection.Strategy != SelectionStrategy.Cues)
+        var reportedShortCount = segments.Count < requestedCount
+            && request.Selection.Strategy != SelectionStrategy.Cues;
+
+        if (reportedShortCount)
         {
             var achieved = segments.Aggregate(TimeSpan.Zero, (a, s) => a + s.Duration);
             warnings.Add(
@@ -198,7 +257,7 @@ public sealed class RenderPipeline
                 + "Try lowering --min-gap, widening --skip-head/--skip-tail, or adding more sources.");
         }
 
-        // 5. Repeat the pool to fill the runtime when the distinct count is capped.
+        // 6. Repeat the pool to fill the runtime when the distinct count is capped.
         if (distinctWanted < durations.Count)
         {
             var pool = segments;
@@ -224,7 +283,33 @@ public sealed class RenderPipeline
             }
         }
 
-        // 6. Resolve the encoder.
+        // 7. Measure how much of the source this consumes. Deliberately after the repeat-fill:
+        // the fill is what decouples runtime from footage consumed, so measuring before it would
+        // report the pool rather than the render.
+        var usage = SourceUsageGuard.Evaluate(
+            segments,
+            sources.Select(s => (s.Info.Path, s.Info.Duration)),
+            request.MaxSourceFraction);
+
+        if (SourceUsageGuard.Describe(usage) is { } usageMessage)
+        {
+            if (request.EnforceMaxSourceFraction)
+            {
+                throw new SourceUsageLimitException(usageMessage, usage);
+            }
+
+            warnings.Add(usageMessage);
+        }
+
+        // 8. Check the finished plan against what was actually asked for. Everything above plans
+        // toward the target rather than measuring against it, and each stage has its own way of
+        // falling short, so the miss is caught once here rather than left to the finished file.
+        if (DescribeDurationMiss(request, segments, reportedShortCount) is { } durationMessage)
+        {
+            warnings.Add(durationMessage);
+        }
+
+        // 9. Resolve the encoder.
         var encoder = await _encoderSelector.SelectAsync(request.Encoder, cancellationToken);
         if (request.Encoder.Preference == EncoderPreference.Auto && !encoder.IsHardware)
         {
@@ -262,9 +347,9 @@ public sealed class RenderPipeline
             // Extract.
             var extension = Path.GetExtension(request.OutputPath) is { Length: > 1 } ext ? ext : ".mp4";
 
-            // Identical clips are encoded once and referenced many times. This matters when
-            // --max-clips is repeating a small pool: a 210-slot render built from 50 clips
-            // performs 50 encodes, not 210, and every repeat is bit-identical.
+            // Identical clips are encoded once and referenced many times, which matters when
+            // --max-clips repeats a small pool: one encode per distinct clip, not per slot, and
+            // every repeat is bit-identical.
             var uniqueClips = new Dictionary<ClipKey, string>();
             var extractionQueue = new List<(Segment Segment, string Path)>();
 
@@ -314,7 +399,7 @@ public sealed class RenderPipeline
                             Look = request.Look,
                             Encoder = plan.Encoder,
                             EncoderOptions = request.Encoder,
-                            Mute = request.Mute,
+                            Mute = !request.Audio.UsesSegmentAudio,
                         },
                         progress: null,
                         ct);
@@ -339,7 +424,7 @@ public sealed class RenderPipeline
                 Format = request.Format,
                 Encoder = plan.Encoder,
                 EncoderOptions = request.Encoder,
-                Mute = request.Mute,
+                Audio = request.Audio,
                 WorkingDirectory = workDir,
             };
 
@@ -347,7 +432,7 @@ public sealed class RenderPipeline
             EnsureOutputDirectory(request.OutputPath);
             await stitcher.StitchAsync(stitchRequest, new InlineProgress<double>(observer.OnStitchProgress), cancellationToken);
 
-            observer.OnPhaseStarted(RenderPhase.Finalising, Path.GetFileName(request.OutputPath));
+            observer.OnPhaseStarted(RenderPhase.Finalizing, Path.GetFileName(request.OutputPath));
 
             var size = File.Exists(request.OutputPath) ? new FileInfo(request.OutputPath).Length : 0L;
 
@@ -379,7 +464,8 @@ public sealed class RenderPipeline
 
         var request = plan.Request;
         var infoByPath = plan.Sources.ToDictionary(s => s.Path, s => s.Info, StringComparer.Ordinal);
-        var workDir = Path.Combine(Path.GetTempPath(), "reviewclips", "dry-run");
+        // Illustrative only: nothing is written here, so it is not created.
+        var workDir = Path.Combine(Primitives.ScratchPaths.Work, "dry-run");
         var extension = Path.GetExtension(request.OutputPath) is { Length: > 1 } ext ? ext : ".mp4";
 
         var lines = new List<string>();
@@ -406,7 +492,7 @@ public sealed class RenderPipeline
                     Look = request.Look,
                     Encoder = plan.Encoder,
                     EncoderOptions = request.Encoder,
-                    Mute = request.Mute,
+                    Mute = !request.Audio.UsesSegmentAudio,
                 });
 
                 lines.Add("ffmpeg " + Quote(args));
@@ -424,12 +510,60 @@ public sealed class RenderPipeline
             Format = request.Format,
             Encoder = plan.Encoder,
             EncoderOptions = request.Encoder,
-            Mute = request.Mute,
+            Audio = request.Audio,
             WorkingDirectory = workDir,
         };
 
         lines.Add("ffmpeg " + Quote(ResolveStitcher(stitchRequest).DescribeArguments(stitchRequest)));
         return lines;
+    }
+
+    /// <summary>
+    /// The external track's usable length, or null when it could not be measured. The
+    /// non-throwing counterpart to <see cref="ResolveAudioTargetAsync"/>, for callers that only
+    /// comment on the length rather than derive anything from it.
+    /// </summary>
+    private async Task<TimeSpan?> TryResolveAudioLengthAsync(
+        Options.AudioOptions audio,
+        CancellationToken cancellationToken)
+    {
+        var total = await _probe.ProbeDurationAsync(audio.ExternalPath!, cancellationToken);
+
+        if (total <= TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        var remaining = total - audio.Offset;
+        return remaining > TimeSpan.Zero ? remaining : null;
+    }
+
+    /// <summary>
+    /// Derives the render's target duration from the external track, less any start offset.
+    /// </summary>
+    private async Task<TimeSpan> ResolveAudioTargetAsync(
+        Options.AudioOptions audio,
+        CancellationToken cancellationToken)
+    {
+        var path = audio.ExternalPath!;
+        var total = await _probe.ProbeDurationAsync(path, cancellationToken);
+
+        if (total <= TimeSpan.Zero)
+        {
+            throw new RenderPlanningException(
+                $"Could not read a duration from '{Path.GetFileName(path)}', so --match-audio has nothing to match.");
+        }
+
+        var remaining = total - audio.Offset;
+
+        if (remaining <= TimeSpan.Zero)
+        {
+            throw new RenderPlanningException(
+                $"--audio-offset ({audio.Offset.TotalSeconds:0.#}s) is at or past the end of "
+                + $"'{Path.GetFileName(path)}' ({total.TotalSeconds:0.#}s), leaving no audio to use.");
+        }
+
+        return remaining;
     }
 
     private async Task<Analysis.MediaAnalysis?> GetOrCreateAnalysisAsync(
@@ -468,11 +602,11 @@ public sealed class RenderPipeline
         }
         catch (Exception ex)
         {
-            // Analysis is an optimisation, not a requirement. Degrade to unanalysed rather
+            // Analysis is an optimization, not a requirement. Degrade to unanalyzed rather
             // than failing the whole render.
             _logger.LogWarning(ex, "Analysis failed for {Path}", info.Path);
             var message = $"Analysis failed for '{Path.GetFileName(info.Path)}' ({ex.Message}). "
-                + "Falling back to unanalysed selection for this file.";
+                + "Falling back to unanalyzed selection for this file.";
             warnings.Add(message);
             observer.OnWarning(message);
             return null;
@@ -483,48 +617,114 @@ public sealed class RenderPipeline
         _stitchers.FirstOrDefault(s => s.CanHandle(request))
         ?? throw new RenderPlanningException("No stitcher can handle this request.");
 
-    private static string BuildNoSegmentsMessage(ClipRequest request, IReadOnlyList<SourceMedia> sources)
+    /// <summary>
+    /// Reports a finished plan whose runtime is not the one that was requested, or null when it
+    /// lands close enough.
+    /// <para>
+    /// Tolerance is the larger of half a second and one per cent. Segments are cut to whole
+    /// frames, so a plan is never exact to the tick; the proportional term keeps the check
+    /// meaningful on a long render, where a fixed allowance would be noise. Both directions are
+    /// reported: overshoot is the shape the transition arithmetic fails in.
+    /// </para>
+    /// </summary>
+    /// <param name="alreadyReported">
+    /// Whether the count-based shortfall has already been reported. It names the same problem in
+    /// clips rather than seconds and offers more actionable advice, so this defers to it.
+    /// </param>
+    private static string? DescribeDurationMiss(
+        ClipRequest request,
+        IReadOnlyList<Selection.Segment> segments,
+        bool alreadyReported)
     {
-        var reasons = new List<string>();
-
-        if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)
+        if (alreadyReported)
         {
-            reasons.Add("strategy is 'cues' but no cues were supplied (use --cues)");
+            return null;
         }
 
-        var shortest = sources.Min(s => s.Info.Duration);
-        if (shortest < request.SpliceLength)
+        var rendered = SplicePlanner.RenderedDuration(
+            [.. segments.Select(s => s.Duration)],
+            request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero);
+
+        var target = request.TargetDuration;
+        var difference = rendered - target;
+
+        var tolerance = TimeSpan.FromSeconds(Math.Max(0.5d, target.TotalSeconds * 0.01d));
+        if (difference.Duration() <= tolerance)
         {
-            reasons.Add($"the shortest source ({shortest.TotalSeconds:0.#}s) is shorter than the splice length");
+            return null;
         }
 
-        if (request.Selection.RejectBlack || request.Selection.RejectFrozen)
+        var short_ = difference < TimeSpan.Zero;
+        var direction = short_ ? "short of" : "longer than";
+
+        // The two directions have different causes and so different remedies. For cues, short
+        // means a cue could not be given its share; long means more cues than the runtime can
+        // divide.
+        var advice = (request.Selection.Strategy, short_) switch
         {
-            reasons.Add("black/frozen rejection may have excluded everything (try --no-reject-black / --no-reject-frozen)");
+            (SelectionStrategy.Cues, true) =>
+                "Each cue takes an equal share of the runtime, so a cue too close to the end of "
+                + "its source is capped at what remains. Move it earlier or shorten --duration.",
+
+            (SelectionStrategy.Cues, false) =>
+                $"{request.Selection.Cues.Count} cues divide into shares too short to be clips, so "
+                + "each was raised to the shortest clip worth cutting. Use fewer cues or lengthen "
+                + "--duration.",
+
+            (_, true) => "Try a shorter --splice, a smaller --min-gap, or more sources.",
+
+            _ => "Try a shorter --splice or a shorter --transition-duration.",
+        };
+
+        return $"This render comes out {rendered.TotalSeconds:0.#}s, "
+            + $"{difference.Duration().TotalSeconds:0.#}s {direction} the "
+            + $"{target.TotalSeconds:0.#}s requested. "
+            + advice;
+    }
+
+    /// <summary>
+    /// Explains an empty selection.
+    /// <para>
+    /// The cause is established by measurement rather than by listing whichever filters happened
+    /// to be enabled — see <see cref="EligibilityDiagnostics"/>. Only the two conditions that
+    /// eligibility arithmetic cannot see are checked directly first.
+    /// </para>
+    /// </summary>
+    private static string BuildNoSegmentsMessage(ClipRequest request, SelectionContext context)
+    {
+        if (request.Selection.Strategy == SelectionStrategy.Cues)
+        {
+            // Cues bypass eligibility entirely, so nothing below would say anything useful.
+            return request.Selection.Cues.Count == 0
+                ? "No usable segments were found. Cause: strategy is 'cues' but no cues were supplied (use --cues)."
+                : "No usable segments were found. Cause: none of the cues fall inside a source "
+                    + "(check the timestamps against 'rcc probe').";
         }
 
-        var skippedChapters = sources
-            .Sum(s => Media.ChapterFilter.Matching(s.Info.Chapters, request.Selection.EffectiveChapterPatterns).Count);
-        if (skippedChapters > 0)
+        if (EligibilityDiagnostics.Explain(context) is { } cause)
         {
-            reasons.Add($"{skippedChapters} chapter(s) were skipped by title (try --chapters off)");
+            return $"No usable segments were found. Cause: {cause}.";
         }
 
-        var detail = reasons.Count > 0
-            ? " Likely cause: " + string.Join("; ", reasons) + "."
-            : " Try relaxing --min-gap, --skip-head and --skip-tail.";
-
-        return "No usable segments were found." + detail;
+        // Footage was eligible, so the constraint is on where clips may sit relative to each other.
+        return "No usable segments were found. There is eligible footage, but no clips could be "
+            + $"placed in it; try lowering --min-gap (currently {request.Selection.MinGap.TotalSeconds:0.#}s) "
+            + "or shortening --splice.";
     }
 
     private static string CreateWorkingDirectory(ClipRequest request)
     {
-        var root = request.WorkingDirectory
-            ?? Path.Combine(Path.GetTempPath(), "reviewclips");
+        var explicitRoot = request.WorkingDirectory;
+        var root = explicitRoot ?? Primitives.ScratchPaths.Work;
 
         var dir = Path.Combine(root, $"run_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N")[..8]}");
-        Directory.CreateDirectory(dir);
-        return dir;
+
+        // An explicitly chosen directory is the user's to manage, permissions included. The
+        // default lives under the per-user scratch root and is locked down, since it holds
+        // extracted footage for the length of the render.
+        return explicitRoot is null
+            ? Primitives.ScratchPaths.EnsureDirectory(dir)
+            : Directory.CreateDirectory(dir).FullName;
     }
 
     private static void EnsureOutputDirectory(string outputPath)
@@ -581,4 +781,34 @@ public sealed class RenderPlanningException : Exception
     public RenderPlanningException()
     {
     }
+}
+
+/// <summary>
+/// Thrown when a render would consume more of the source than the configured limit allows and
+/// <see cref="Options.ClipRequest.EnforceMaxSourceFraction"/> is set.
+/// <para>
+/// Deliberately not a <see cref="RenderPlanningException"/>, which means "nothing usable could
+/// be produced" and carries a different exit code: here the planning worked and a policy
+/// declined the result.
+/// </para>
+/// </summary>
+public sealed class SourceUsageLimitException : Exception
+{
+    public SourceUsageLimitException(string message, Planning.SourceUsageReport report)
+        : base(message) => Report = report;
+
+    public SourceUsageLimitException(string message) : base(message)
+    {
+    }
+
+    public SourceUsageLimitException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    public SourceUsageLimitException()
+    {
+    }
+
+    public Planning.SourceUsageReport? Report { get; }
 }

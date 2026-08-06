@@ -16,22 +16,29 @@ public sealed record ClipRequest
     /// <summary>Nominal length of each spliced segment.</summary>
     public TimeSpan SpliceLength { get; init; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>
-    /// Random variation applied to each splice length, plus or minus. A perfectly regular
-    /// cadence is noticeably robotic, so a little jitter reads as a human edit.
-    /// </summary>
+    /// <summary>Random variation applied to each splice length, plus or minus, so the cadence is irregular.</summary>
     public TimeSpan SpliceJitter { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Caps how many <em>distinct</em> clips are cut, repeating them to fill the runtime.
-    /// <c>null</c> means every slot gets its own clip.
-    /// <para>
-    /// This decouples the length of the render from the amount of source footage consumed.
-    /// A 16-minute render normally takes over 17 minutes of the original; capping at 50 clips
-    /// takes about 4 minutes of it instead.
-    /// </para>
+    /// Caps how many <em>distinct</em> clips are cut, repeating them to fill the runtime, which
+    /// decouples render length from the amount of source consumed. <c>null</c> gives every slot
+    /// its own clip.
     /// </summary>
     public int? MaxDistinctClips { get; init; }
+
+    /// <summary>
+    /// Share of the combined source runtime this render may consume before it is remarked upon,
+    /// measured as the union of the referenced ranges rather than as clip count times clip
+    /// length. <c>0</c> disables the check.
+    /// </summary>
+    public double MaxSourceFraction { get; init; } = Planning.SourceUsageGuard.DefaultLimit;
+
+    /// <summary>
+    /// Turn <see cref="MaxSourceFraction"/> from a warning into a refusal. Off by default: a
+    /// short render from a short source exceeds the limit routinely, so the default reports the
+    /// exposure rather than blocking it.
+    /// </summary>
+    public bool EnforceMaxSourceFraction { get; init; }
 
     public SelectionOptions Selection { get; init; } = new();
 
@@ -45,19 +52,21 @@ public sealed record ClipRequest
 
     public AnalysisSettings Analysis { get; init; } = new();
 
+    /// <summary>What the finished render should sound like. Muted by default.</summary>
+    public AudioOptions Audio { get; init; } = new();
+
     /// <summary>
-    /// Strip audio. On by default: this footage sits under podcast narration, and a
-    /// second audio bed fighting your voice is worse than silence.
+    /// Whether the render carries no audio at all. A passthrough over <see cref="Audio"/> so the
+    /// extractor, stitchers and manifest need not know where the audio would have come from.
     /// </summary>
-    public bool Mute { get; init; } = true;
+    public bool Mute => Audio.IsMuted;
 
     /// <summary>Concurrent FFmpeg extraction processes.</summary>
     public int Parallelism { get; init; } = 4;
 
     /// <summary>
-    /// Re-analyse sources even when a cached result exists, and overwrite it. The cache key
-    /// already covers file identity and every analysis setting, so this is only needed to
-    /// recover from a stale entry or to measure scan cost.
+    /// Re-analyze sources even when a cached result exists, and overwrite it. The cache key
+    /// already covers file identity and every analysis setting, so this is rarely needed.
     /// </summary>
     public bool IgnoreAnalysisCache { get; init; }
 

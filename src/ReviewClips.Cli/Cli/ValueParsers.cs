@@ -151,16 +151,18 @@ internal static class ValueParsers
             HelpName = helpName,
             AllowMultipleArgumentsPerToken = true,
             Arity = ArgumentArity.ZeroOrMore,
-            CustomParser = result => result.Tokens
-                .Select(t => t.Value.Trim())
-                .Where(v => v.Length > 0)
-                .ToList(),
+            CustomParser = result =>
+            [
+                .. result.Tokens
+                    .Select(t => t.Value.Trim())
+                    .Where(v => v.Length > 0),
+            ],
         };
 
     /// <summary>
-    /// Parses cues from either a comma-separated list or a file, one per line.
-    /// Blank lines, <c>#</c> comments and trailing labels are ignored, so a working
-    /// notes file can be used directly.
+    /// Parses cues from either a comma-separated list or a file, one per line. Blank lines,
+    /// <c>#</c> comments and trailing labels are ignored, so a working notes file can be used
+    /// directly.
     /// </summary>
     public static Option<List<TimeSpan>> CuesOption(
         string name,
@@ -217,8 +219,8 @@ internal static class ValueParsers
                 }
 
                 // Accept kebab-case as well as the enum's own spelling.
-                var normalised = text.Replace("-", string.Empty, StringComparison.Ordinal);
-                if (Enum.TryParse<T>(normalised, ignoreCase: true, out var value))
+                var normalized = text.Replace("-", string.Empty, StringComparison.Ordinal);
+                if (Enum.TryParse<T>(normalized, ignoreCase: true, out var value))
                 {
                     return value;
                 }
@@ -324,7 +326,7 @@ internal static class ValueParsers
                 continue;
             }
 
-            // Allow "00:12:34  the twist reveal" so the file can double as working notes.
+            // Allow a trailing label, as in "00:12:34  the twist reveal".
             var token = line.Split([' ', '\t', ',', ';'], 2, StringSplitOptions.RemoveEmptyEntries)[0];
 
             if (DurationSpec.TryParse(token, out var cue, out _))

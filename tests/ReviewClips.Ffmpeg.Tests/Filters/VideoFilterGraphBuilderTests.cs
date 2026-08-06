@@ -32,13 +32,14 @@ public class VideoFilterGraphBuilderTests
         MediaInfo? source = null,
         OutputFormat? format = null,
         LookOptions? look = null,
-        int? overlayIndex = null) => new()
+        string? attributionTextPath = null,
+        double segmentSeconds = 5) => new()
         {
             Source = source ?? Source(),
             Format = format ?? OutputFormat.Youtube,
             Look = look ?? LookOptions.None,
-            SegmentDuration = TimeSpan.FromSeconds(5),
-            OverlayInputIndex = overlayIndex,
+            SegmentDuration = TimeSpan.FromSeconds(segmentSeconds),
+            AttributionTextPath = attributionTextPath,
         };
 
     private static string Build(FilterContext context) =>
@@ -61,11 +62,9 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void Graph_SetsSampleAspectRatioAfterScaling()
-    {
+    public void Graph_SetsSampleAspectRatioAfterScaling() =>
         // Without setsar the output inherits a non-square SAR and players squash it.
         Build(Context()).ShouldContain("setsar=1");
-    }
 
     // --- Tone mapping ------------------------------------------------------
 
@@ -86,9 +85,9 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void ToneMap_StatesInputColourCharacteristicsExplicitly()
+    public void ToneMap_StatesInputColorCharacteristicsExplicitly()
     {
-        // Leaving these implicit makes zscale fail on files with partial colour metadata.
+        // Leaving these implicit makes zscale fail on files with partial color metadata.
         var graph = Build(Context(Source(colorTransfer: "smpte2084")));
 
         graph.ShouldContain("setparams=color_trc=smpte2084");
@@ -271,7 +270,7 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void Look_AppliesDarkeningBeforeColourAdjustments()
+    public void Look_AppliesDarkeningBeforeColorAdjustments()
     {
         var graph = Build(Context(look: new LookOptions { Darken = 0.4, Saturation = 0.7 }));
 
@@ -340,20 +339,6 @@ public class VideoFilterGraphBuilderTests
         Build(Context(look: new LookOptions { ZoomEnd = 1.0 })).ShouldNotContain("zoompan");
 
     [Fact]
-    public void Overlay_IsOnlyEmittedWhenAnInputIndexIsAvailable()
-    {
-        var look = new LookOptions { OverlayPath = "/tmp/logo.png", OverlayOpacity = 0.5 };
-
-        // No index means the caller did not add the second -i, so the stage must stay silent.
-        Build(Context(look: look)).ShouldNotContain("overlay=0:0");
-
-        var withInput = Build(Context(look: look, overlayIndex: 1));
-        withInput.ShouldContain("[1:v]");
-        withInput.ShouldContain("colorchannelmixer=aa=0.5");
-        withInput.ShouldContain("overlay=0:0:shortest=1");
-    }
-
-    [Fact]
     public void Lut_EscapesPathSeparatorsThatWouldBreakFilterSyntax()
     {
         var graph = Build(Context(look: new LookOptions { LutPath = "/luts/my:grade,v2.cube" }));
@@ -388,9 +373,9 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void FrameRateNormalisation_IsAlwaysApplied()
+    public void FrameRateNormalization_IsAlwaysApplied()
     {
-        // Variable-frame-rate sources otherwise desynchronise when concatenated.
+        // Variable-frame-rate sources otherwise desynchronize when concatenated.
         Build(Context(format: OutputFormat.Youtube with { FrameRate = 30 }))
             .ShouldContain("fps=30");
     }
@@ -469,5 +454,313 @@ public class BlurPadForegroundScaleTests
         // The blurred cover layer always fills the frame exactly.
         graph.ShouldContain("scale=1080:1920:force_original_aspect_ratio=increase");
         graph.ShouldContain("crop=1080:1920");
+    }
+}
+
+/// <summary>
+/// The stages ported from pi, plus the options folded into existing stages.
+/// </summary>
+public class TreatmentStageTests
+{
+    private static FilterContext Context(LookOptions look, double segmentSeconds = 5) => new()
+    {
+        Source = new MediaInfo
+        {
+            Path = "/movies/film.mkv",
+            FileSizeBytes = 1,
+            LastModifiedUtc = DateTimeOffset.UnixEpoch,
+            Duration = TimeSpan.FromMinutes(90),
+            Width = 1920,
+            Height = 1080,
+            FrameRate = 24,
+            VideoCodec = "h264",
+            PixelFormat = "yuv420p",
+            SampleAspectRatio = Ratio.One,
+            HasAudio = true,
+        },
+        Format = OutputFormat.Youtube,
+        Look = look,
+        SegmentDuration = TimeSpan.FromSeconds(segmentSeconds),
+        AttributionTextPath = look.HasAttribution ? "/tmp/reviewclips/text/abc123.txt" : null,
+    };
+
+    private static string Build(LookOptions look, double segmentSeconds = 5) =>
+        VideoFilterGraphBuilder.CreateDefault().Build(Context(look, segmentSeconds));
+
+    private static IReadOnlyList<string> Stages(LookOptions look) =>
+        VideoFilterGraphBuilder.CreateDefault().ActiveStageNames(Context(look));
+
+    // --- Sharpen -----------------------------------------------------------
+
+    [Fact]
+    public void Sharpen_IsAbsentByDefault() =>
+        Build(LookOptions.None).ShouldNotContain("unsharp");
+
+    [Fact]
+    public void Sharpen_EmitsALumaOnlyUnsharpMask()
+    {
+        var graph = Build(LookOptions.None with { Sharpen = 0.8 });
+
+        // Chroma amount is 0: sharpening chroma on compressed footage amplifies blocking.
+        graph.ShouldContain("unsharp=5:5:0.8:5:5:0");
+    }
+
+    [Fact]
+    public void Sharpen_RunsBeforeBlurSoAnExplicitBlurStillWins()
+    {
+        var graph = Build(LookOptions.None with { Sharpen = 1, Blur = 4 });
+
+        graph.IndexOf("unsharp", StringComparison.Ordinal)
+            .ShouldBeLessThan(graph.IndexOf("gblur", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Sharpen_IsClamped() =>
+        Build(LookOptions.None with { Sharpen = 99 }).ShouldContain("unsharp=5:5:3:5:5:0");
+
+    // --- Pixelate ----------------------------------------------------------
+
+    [Fact]
+    public void Pixelate_IsAbsentByDefault() =>
+        Build(LookOptions.None).ShouldNotContain("neighbor");
+
+    [Fact]
+    public void Pixelate_DownscalesAndUpscalesWithNearestNeighbor()
+    {
+        // 1920x1080 at factor 4 is 480x270, then back to full size.
+        var graph = Build(LookOptions.None with { Pixelate = 4 });
+
+        graph.ShouldContain("scale=480:270:flags=neighbor");
+        graph.ShouldContain("scale=1920:1080:flags=neighbor");
+    }
+
+    [Fact]
+    public void Pixelate_AlwaysProducesEvenIntermediateDimensions()
+    {
+        // 1080/7 is 154.28..., which must not round to an odd number: an odd dimension makes
+        // the yuv420p conversion at the end of the graph fail outright.
+        var graph = Build(LookOptions.None with { Pixelate = 7 });
+
+        var match = System.Text.RegularExpressions.Regex.Match(graph, @"scale=(\d+):(\d+):flags=neighbor");
+        match.Success.ShouldBeTrue();
+
+        (int.Parse(match.Groups[1].Value) % 2).ShouldBe(0);
+        (int.Parse(match.Groups[2].Value) % 2).ShouldBe(0);
+    }
+
+    [Fact]
+    public void Pixelate_IsSkippedAtOrBelowOne()
+    {
+        Build(LookOptions.None with { Pixelate = 1 }).ShouldNotContain("neighbor");
+        Build(LookOptions.None with { Pixelate = 0 }).ShouldNotContain("neighbor");
+    }
+
+    [Fact]
+    public void Pixelate_RunsAfterBlur()
+    {
+        var graph = Build(LookOptions.None with { Blur = 3, Pixelate = 4 });
+
+        // Blurring after pixelating would soften away the blocks that are the point.
+        graph.IndexOf("gblur", StringComparison.Ordinal)
+            .ShouldBeLessThan(graph.IndexOf("neighbor", StringComparison.Ordinal));
+    }
+
+    // --- Fade edges --------------------------------------------------------
+
+    [Fact]
+    public void FadeEdges_IsAbsentByDefault() =>
+        Build(LookOptions.None).ShouldNotContain("fade=t=");
+
+    [Fact]
+    public void FadeEdges_FadesInAtTheStartAndOutAtTheEnd()
+    {
+        var graph = Build(LookOptions.None with { FadeEdges = TimeSpan.FromSeconds(0.5) }, segmentSeconds: 6);
+
+        graph.ShouldContain("fade=t=in:st=0:d=0.5");
+        graph.ShouldContain("fade=t=out:st=5.5:d=0.5");
+    }
+
+    [Fact]
+    public void FadeEdges_IsClampedToHalfTheClip()
+    {
+        // Two 3s fades cannot fit in a 4s clip; past halfway they would meet in the middle and
+        // the clip would never reach full brightness.
+        var graph = Build(LookOptions.None with { FadeEdges = TimeSpan.FromSeconds(3) }, segmentSeconds: 4);
+
+        graph.ShouldContain("fade=t=in:st=0:d=2");
+        graph.ShouldContain("fade=t=out:st=2:d=2");
+    }
+
+    // --- Attribution -------------------------------------------------------
+
+    [Fact]
+    public void Attribution_IsAbsentByDefault() =>
+        Build(LookOptions.None).ShouldNotContain("drawtext");
+
+    [Fact]
+    public void Attribution_ReadsTheTextFromAFileRatherThanInlining()
+    {
+        var graph = Build(LookOptions.None with { Attribution = "Clip from Heat (1995)" });
+
+        // No user string ever reaches the filter grammar.
+        graph.ShouldContain("drawtext=textfile=");
+        graph.ShouldNotContain("Heat");
+    }
+
+    [Fact]
+    public void Attribution_DisablesTextExpansion()
+    {
+        // Without this a % or {} in a title is read as strftime and expression syntax.
+        Build(LookOptions.None with { Attribution = "100% practical effects" })
+            .ShouldContain("expansion=none");
+    }
+
+    [Fact]
+    public void Attribution_EscapesTheTextFilePath()
+    {
+        var graph = VideoFilterGraphBuilder.CreateDefault().Build(new FilterContext
+        {
+            Source = Context(LookOptions.None).Source,
+            Format = OutputFormat.Youtube,
+            Look = LookOptions.None with { Attribution = "x" },
+            SegmentDuration = TimeSpan.FromSeconds(5),
+            AttributionTextPath = @"C:\temp\a b\text.txt",
+        });
+
+        // A colon is structural in filter syntax and would terminate the argument early.
+        graph.ShouldContain(@"C\:");
+    }
+
+    [Theory]
+    [InlineData(TextPosition.BottomRight, "x=w-tw-27:y=h-th-27")]
+    [InlineData(TextPosition.BottomLeft, "x=27:y=h-th-27")]
+    [InlineData(TextPosition.TopLeft, "x=27:y=27")]
+    [InlineData(TextPosition.TopRight, "x=w-tw-27:y=27")]
+    [InlineData(TextPosition.Top, "x=(w-tw)/2:y=27")]
+    [InlineData(TextPosition.Bottom, "x=(w-tw)/2:y=h-th-27")]
+    [InlineData(TextPosition.Center, "x=(w-tw)/2:y=(h-th)/2")]
+    public void Attribution_AnchorsToTheRequestedCorner(TextPosition position, string expected) =>
+        Build(LookOptions.None with { Attribution = "credit", AttributionPosition = position })
+            .ShouldContain(expected);
+
+    [Fact]
+    public void Attribution_ShrinksTheTypeSoALongLineStillFits()
+    {
+        var shortLine = Build(LookOptions.None with { Attribution = "Heat" });
+        var longLine = Build(LookOptions.None with
+        {
+            Attribution = "Clip from Heat (1995), directed by Michael Mann, "
+                + "shown here for the purposes of criticism and review",
+        });
+
+        static double FontSize(string graph) => double.Parse(
+            System.Text.RegularExpressions.Regex.Match(graph, @"fontsize=([\d.]+)").Groups[1].Value,
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        // drawtext cannot wrap, so a long line at the default size would run off the frame.
+        FontSize(longLine).ShouldBeLessThan(FontSize(shortLine));
+        FontSize(longLine).ShouldBeGreaterThanOrEqualTo(12);
+    }
+
+    [Fact]
+    public void Attribution_IsSkippedWhenNoTextFileWasWritten()
+    {
+        var graph = VideoFilterGraphBuilder.CreateDefault().Build(new FilterContext
+        {
+            Source = Context(LookOptions.None).Source,
+            Format = OutputFormat.Youtube,
+            Look = LookOptions.None with { Attribution = "credit" },
+            SegmentDuration = TimeSpan.FromSeconds(5),
+            AttributionTextPath = null,
+        });
+
+        graph.ShouldNotContain("drawtext");
+    }
+
+    [Fact]
+    public void Attribution_RunsAfterEverythingThatCouldObscureIt()
+    {
+        var look = LookOptions.None with
+        {
+            Attribution = "credit",
+            Blur = 4,
+            Grain = 20,
+            Pixelate = 3,
+            Vignette = true,
+        };
+
+        var stages = Stages(look);
+        var attribution = stages.ToList().IndexOf("attribution");
+
+        // Anything that obscures the frame must precede the credit line.
+        foreach (var obscuring in new[] { "blur", "grain", "pixelate", "vignette" })
+        {
+            stages.ToList().IndexOf(obscuring).ShouldBeLessThan(attribution);
+        }
+
+        // But the pixel-format conversion still comes last.
+        stages[^1].ShouldBe("output-format");
+    }
+
+    // --- Gamma and grayscale, folded into the look stage --------------------
+
+    [Fact]
+    public void Gamma_IsAbsentByDefault() =>
+        Build(LookOptions.None).ShouldNotContain("gamma");
+
+    [Fact]
+    public void Gamma_UsesEqWhichIsAPowerCurveNotAnOffset() =>
+        Build(LookOptions.None with { Gamma = 0.9 }).ShouldContain("gamma=0.9");
+
+    [Fact]
+    public void Grayscale_ZeroesSaturation() =>
+        Build(LookOptions.None with { Grayscale = true }).ShouldContain("saturation=0");
+
+    [Fact]
+    public void Grayscale_WinsOverAnExplicitSaturation()
+    {
+        // The more specific request wins; the two coincide only when a profile set one and the
+        // user then asked for the other.
+        var graph = Build(LookOptions.None with { Grayscale = true, Saturation = 1.4 });
+
+        graph.ShouldContain("saturation=0");
+        graph.ShouldNotContain("saturation=1.4");
+    }
+
+    [Fact]
+    public void Darken_IsStillMultiplicativeAndNotAnEqBrightnessOffset()
+    {
+        // Guards the reasoning in LookStages.cs: eq=brightness subtracts a constant and crushes
+        // dark footage to black.
+        var graph = Build(LookOptions.None with { Darken = 0.45 });
+
+        graph.ShouldContain("lutyuv=y=minval+(val-minval)*0.55");
+        graph.ShouldNotContain("brightness");
+    }
+
+    // --- Vertical flip, folded into the mirror stage ------------------------
+
+    [Fact]
+    public void Flip_IsAbsentByDefault()
+    {
+        Build(LookOptions.None).ShouldNotContain("vflip");
+        Build(LookOptions.None).ShouldNotContain("hflip");
+    }
+
+    [Fact]
+    public void Flip_EmitsVflipAlone()
+    {
+        var graph = Build(LookOptions.None with { FlipVertical = true });
+
+        graph.ShouldContain("vflip");
+        graph.ShouldNotContain("hflip");
+    }
+
+    [Fact]
+    public void Flip_CombinesWithMirrorInOneStage()
+    {
+        var graph = Build(LookOptions.None with { Mirror = true, FlipVertical = true });
+
+        graph.ShouldContain("hflip,vflip");
     }
 }

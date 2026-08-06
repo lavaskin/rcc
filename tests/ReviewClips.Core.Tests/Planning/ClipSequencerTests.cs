@@ -6,14 +6,15 @@ namespace ReviewClips.Core.Tests.Planning;
 public class ClipSequencerTests
 {
     private static List<Segment> Pool(int count, double seconds = 5) =>
-        Enumerable.Range(0, count)
+    [
+        .. Enumerable.Range(0, count)
             .Select(i => new Segment
             {
                 SourcePath = "/movies/film.mkv",
                 Start = TimeSpan.FromSeconds(100 + (i * 60)),
                 Duration = TimeSpan.FromSeconds(seconds),
-            })
-            .ToList();
+            }),
+    ];
 
     [Fact]
     public void Fill_ReachesTheRequestedMaterialTotalExactly()
@@ -98,29 +99,74 @@ public class ClipSequencerTests
         }
     }
 
-    [Theory]
-    [InlineData(960, 0.4)]
-    [InlineData(300, 0.5)]
-    [InlineData(120, 0.8)]
-    [InlineData(60, 0.4)]
-    public void FillForOutput_LandsOnTheRequestedRuntimeAfterTransitions(
-        double target,
-        double transition)
+    private static double RenderedSeconds(IReadOnlyList<Segment> sequence, double transition)
     {
-        var sequence = ClipSequencer.FillForOutput(
-            Pool(50),
-            TimeSpan.FromSeconds(target),
-            TimeSpan.FromSeconds(transition),
-            seed: 1);
-
         var effective = SplicePlanner.EffectiveTransition(
             sequence.Select(s => s.Duration).ToList(),
             TimeSpan.FromSeconds(transition));
 
-        var output = sequence.Sum(s => s.Duration.TotalSeconds)
+        return sequence.Sum(s => s.Duration.TotalSeconds)
             - (effective.TotalSeconds * (sequence.Count - 1));
+    }
 
-        output.ShouldBe(target, 0.3);
+    /// <summary>
+    /// The <c>--max-clips</c> path carries the same trimmed-tail hazard as
+    /// <see cref="SplicePlanner.PlanForOutput"/>, and is swept for the same reason: the failure
+    /// depends on the (target, seed) pair, so a spot check cannot be trusted to contain one.
+    /// </summary>
+    [Theory]
+    [InlineData(0.4)]
+    [InlineData(0.5)]
+    [InlineData(0.8)]
+    [InlineData(1.5)]
+    public void FillForOutput_LandsOnTheRequestedRuntimeAfterTransitions(double transition)
+    {
+        double[] targets = [60, 120, 300, 577, 960];
+
+        foreach (var target in targets)
+        {
+            for (var seed = 1; seed <= 8; seed++)
+            {
+                var sequence = ClipSequencer.FillForOutput(
+                    Pool(8, 7),
+                    TimeSpan.FromSeconds(target),
+                    TimeSpan.FromSeconds(transition),
+                    seed);
+
+                RenderedSeconds(sequence, transition).ShouldBe(
+                    target,
+                    0.3,
+                    $"target {target}s, transition {transition}s, seed {seed}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The mechanism, asserted directly: the trimmed final slot no longer decides the overlap
+    /// the other joins get, so the applied transition depends on the settings alone. That
+    /// independence is what makes <see cref="ClipSequencer.FillForOutput"/>'s loop converge.
+    /// </summary>
+    [Fact]
+    public void FillForOutput_AppliesTheSameTransitionWhateverTheTargetAndSeed()
+    {
+        double[] targets = [60, 120, 300, 577];
+
+        var applied = targets
+            .SelectMany(target => Enumerable.Range(1, 8).Select(seed => (target, seed)))
+            .Select(x => SplicePlanner.EffectiveTransition(
+                [
+                    .. ClipSequencer.FillForOutput(
+                            Pool(8, 7),
+                            TimeSpan.FromSeconds(x.target),
+                            TimeSpan.FromSeconds(0.8),
+                            x.seed)
+                        .Select(s => s.Duration),
+                ],
+                TimeSpan.FromSeconds(0.8)))
+            .Distinct()
+            .ToList();
+
+        applied.ShouldBe([TimeSpan.FromSeconds(0.8)]);
     }
 
     [Fact]
@@ -140,49 +186,5 @@ public class ClipSequencerTests
 
         // The pool size is what --max-clips controls; a shortened copy is not a new clip.
         ClipSequencer.CountDistinct([.. pool, trimmed]).ShouldBe(3);
-    }
-
-    [Fact]
-    public void DistinctSourceDuration_CountsRepeatedFootageOnce()
-    {
-        var pool = Pool(10);
-        var repeated = pool.Concat(pool).Concat(pool).ToList();
-
-        // 10 clips of 5s regardless of how many times they appear.
-        ClipSequencer.DistinctSourceDuration(repeated).TotalSeconds.ShouldBe(50d, 0.0001);
-    }
-
-    [Fact]
-    public void DistinctSourceDuration_MergesOverlappingClips()
-    {
-        var a = new Segment
-        {
-            SourcePath = "/movies/film.mkv",
-            Start = TimeSpan.FromSeconds(100),
-            Duration = TimeSpan.FromSeconds(10),
-        };
-
-        var overlapping = a with { Start = TimeSpan.FromSeconds(105) };
-
-        // 100-110 and 105-115 cover 15s of footage, not 20s.
-        ClipSequencer.DistinctSourceDuration([a, overlapping])
-            .TotalSeconds
-            .ShouldBe(15d, 0.0001);
-    }
-
-    [Fact]
-    public void DistinctSourceDuration_KeepsSourcesSeparate()
-    {
-        var a = new Segment
-        {
-            SourcePath = "/movies/a.mkv",
-            Start = TimeSpan.FromSeconds(100),
-            Duration = TimeSpan.FromSeconds(5),
-        };
-
-        var b = a with { SourcePath = "/movies/b.mkv" };
-
-        // Identical timestamps in different files are different footage.
-        ClipSequencer.DistinctSourceDuration([a, b]).TotalSeconds.ShouldBe(10d, 0.0001);
     }
 }

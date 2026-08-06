@@ -26,10 +26,31 @@ public sealed record SelectionContext
     /// <summary>Seeded RNG. Shared so a single seed reproduces the whole render.</summary>
     public required Random Random { get; init; }
 
+    /// <summary>
+    /// Playback rate the clips will be retimed by, from <c>--speed</c>. 1 leaves everything as it
+    /// was. See <see cref="Segment.SpeedFactor"/>.
+    /// </summary>
+    public double SpeedFactor { get; init; } = 1d;
+
     public int SegmentCount => SegmentDurations.Count;
 
+    /// <summary>
+    /// The stretch of source a single clip needs, which is the longest planned clip after
+    /// retiming.
+    /// <para>
+    /// Every eligibility question uses this: whether a range is long enough to sample from,
+    /// whether a candidate start has room, and how far apart two picks must sit to avoid
+    /// overlapping. All three concern source footage, so all three must be scaled by the speed.
+    /// </para>
+    /// </summary>
     public TimeSpan LongestSegment =>
-        SegmentDurations.Count == 0 ? TimeSpan.Zero : SegmentDurations.Max();
+        SegmentDurations.Count == 0
+            ? TimeSpan.Zero
+            : ScaleToSource(SegmentDurations.Max());
+
+    /// <summary>Converts an output duration into the source footage needed to produce it.</summary>
+    public TimeSpan ScaleToSource(TimeSpan output) =>
+        SpeedFactor is > 0d and not 1d ? output * SpeedFactor : output;
 
     /// <summary>
     /// The chapters of a source that the current options exclude, in file order. Empty when the
@@ -79,9 +100,8 @@ public sealed record SelectionContext
             eligible = eligible.Subtract(Options.ExcludeRanges);
         }
 
-        // Chapter bounds are stated by the container rather than inferred, so they are subtracted
-        // un-padded. A clip still cannot bleed into one, because selectors require a candidate
-        // window to fit entirely inside a single eligible range.
+        // Chapter bounds are stated by the container rather than inferred, so they subtract
+        // un-padded; a candidate window must fit entirely inside one eligible range anyway.
         var skippedChapters = SkippedChapters(source);
         if (skippedChapters.Count > 0)
         {

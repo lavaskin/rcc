@@ -6,6 +6,7 @@ using ReviewClips.Core.Pipeline;
 using ReviewClips.Core.Selection;
 using ReviewClips.Core.Sources;
 using ReviewClips.Ffmpeg.Analysis;
+using ReviewClips.Ffmpeg.Diagnostics;
 using ReviewClips.Ffmpeg.Encoding;
 using ReviewClips.Ffmpeg.Extraction;
 using ReviewClips.Ffmpeg.Filters;
@@ -58,6 +59,7 @@ internal static class CompositionRoot
         services.AddSingleton<FfmpegRunner>();
         services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
         services.AddSingleton<IMediaAnalyzer, FfmpegMediaAnalyzer>();
+        services.AddSingleton<IEncoderProbe, FfmpegEncoderProbe>();
         services.AddSingleton<IEncoderSelector, FfmpegEncoderSelector>();
         services.AddSingleton<ISegmentExtractor, FfmpegSegmentExtractor>();
 
@@ -65,11 +67,12 @@ internal static class CompositionRoot
             configuration["Cache:Directory"],
             provider.GetRequiredService<ILogger<JsonAnalysisCache>>()));
 
-        // Registration order is significant: the pipeline picks the first stitcher that can
-        // handle a request, so the stream-copy fast path must be offered before the
-        // general-purpose filter-graph one.
+        // Registration order is significant: the pipeline picks the first stitcher that can handle
+        // a request, so the stream-copy fast path must be offered before the filter-graph one.
         services.AddSingleton<IStitcher, ConcatDemuxerStitcher>();
         services.AddSingleton<IStitcher, FilterGraphStitcher>();
+
+        services.AddSingleton<EnvironmentInspector>();
 
         services.AddSingleton(_ => VideoFilterGraphBuilder.CreateDefault());
         services.AddSingleton<ISegmentSelectorFactory>(_ => SegmentSelectorFactory.CreateDefault());

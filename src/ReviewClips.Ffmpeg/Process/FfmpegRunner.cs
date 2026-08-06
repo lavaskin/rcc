@@ -12,15 +12,21 @@ public sealed record FfmpegRunResult
 
     public required string StandardOutput { get; init; }
 
+    /// <summary>
+    /// Frames FFmpeg reported writing, when the run was driven with progress parsing.
+    /// Null for runs that were not, which is not the same as zero.
+    /// </summary>
+    public long? FramesWritten { get; init; }
+
     public bool Success => ExitCode == 0;
 }
 
 /// <summary>
 /// Runs FFmpeg and ffprobe.
 /// <para>
-/// Arguments are always passed via <see cref="ProcessStartInfo.ArgumentList"/>, never as a
-/// concatenated string. File paths from a media library routinely contain spaces, quotes and
-/// brackets, and shell interpolation would be both a correctness and an injection problem.
+/// Arguments always go through <see cref="ProcessStartInfo.ArgumentList"/>, never a concatenated
+/// string: media paths routinely contain spaces, quotes and brackets, so shell interpolation
+/// would be both a correctness and an injection problem.
 /// </para>
 /// </summary>
 public sealed class FfmpegRunner
@@ -54,7 +60,7 @@ public sealed class FfmpegRunner
     /// </summary>
     /// <param name="arguments">Arguments, excluding the progress flags which are added here.</param>
     /// <param name="expectedDuration">Used to convert elapsed media time into a fraction.</param>
-    public Task<FfmpegRunResult> RunFfmpegWithProgressAsync(
+    public async Task<FfmpegRunResult> RunFfmpegWithProgressAsync(
         IReadOnlyList<string> arguments,
         TimeSpan expectedDuration,
         IProgress<double>? progress,
@@ -64,7 +70,8 @@ public sealed class FfmpegRunner
         var withProgress = new List<string>(arguments.Count + 3) { "-nostats", "-progress", "pipe:1" };
         withProgress.AddRange(arguments);
 
-        return RunAsync(_toolset.FfmpegPath, withProgress, parser.Feed, null, cancellationToken);
+        var result = await RunAsync(_toolset.FfmpegPath, withProgress, parser.Feed, null, cancellationToken);
+        return result with { FramesWritten = parser.FramesWritten };
     }
 
     /// <summary>
@@ -181,11 +188,17 @@ public sealed class FfmpegRunner
     }
 
     /// <summary>Runs FFmpeg and throws a descriptive exception on a non-zero exit.</summary>
+    /// <param name="requireFrames">
+    /// Also fail when FFmpeg reports writing no frames. A run that encodes nothing still exits 0
+    /// and leaves a syntactically valid but stream-less file behind, so callers whose output is
+    /// expected to contain pictures should set this rather than let a later stage trip over it.
+    /// </param>
     public async Task RunFfmpegCheckedAsync(
         IReadOnlyList<string> arguments,
         TimeSpan expectedDuration,
         IProgress<double>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireFrames = false)
     {
         var result = await RunFfmpegWithProgressAsync(arguments, expectedDuration, progress, cancellationToken);
         if (!result.Success)
@@ -195,6 +208,18 @@ public sealed class FfmpegRunner
                 arguments,
                 result.ExitCode,
                 result.StandardError);
+        }
+
+        if (requireFrames && result.FramesWritten == 0)
+        {
+            throw new FfmpegExecutionException(
+                _toolset.FfmpegPath,
+                arguments,
+                result.ExitCode,
+                string.IsNullOrWhiteSpace(result.StandardError)
+                    ? "FFmpeg wrote no frames and reported no error."
+                    : result.StandardError,
+                "produced no frames");
         }
     }
 
@@ -233,7 +258,23 @@ public sealed class FfmpegExecutionException : Exception
         IReadOnlyList<string> arguments,
         int exitCode,
         string standardError)
-        : base(BuildMessage(executable, arguments, exitCode, standardError))
+        : base(BuildMessage(executable, arguments, exitCode, standardError, failure: null))
+    {
+        ExitCode = exitCode;
+        StandardError = standardError;
+    }
+
+    /// <param name="failure">
+    /// What went wrong when the exit code does not say: the runs FFmpeg calls successful
+    /// despite having written nothing.
+    /// </param>
+    public FfmpegExecutionException(
+        string executable,
+        IReadOnlyList<string> arguments,
+        int exitCode,
+        string standardError,
+        string failure)
+        : base(BuildMessage(executable, arguments, exitCode, standardError, failure))
     {
         ExitCode = exitCode;
         StandardError = standardError;
@@ -260,14 +301,19 @@ public sealed class FfmpegExecutionException : Exception
         string executable,
         IReadOnlyList<string> arguments,
         int exitCode,
-        string standardError)
+        string standardError,
+        string? failure)
     {
         // Surface only the last few stderr lines: that is where FFmpeg puts the actual cause.
         var lines = standardError
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .TakeLast(6);
 
-        return $"{Path.GetFileName(executable)} exited with code {exitCode}."
+        var headline = failure is null
+            ? $"{Path.GetFileName(executable)} exited with code {exitCode}."
+            : $"{Path.GetFileName(executable)} {failure} (exit code {exitCode}).";
+
+        return headline
             + Environment.NewLine
             + "Command: " + string.Join(' ', arguments)
             + Environment.NewLine

@@ -4,6 +4,7 @@ using System.Text;
 using ReviewClips.Cli.Profiles;
 using ReviewClips.Core.Analysis;
 using ReviewClips.Core.Options;
+using ReviewClips.Core.Planning;
 using ReviewClips.Core.Sources;
 
 namespace ReviewClips.Cli.Cli;
@@ -128,14 +129,28 @@ internal sealed class ClipRequestBuilder
             Darken = parse.GetValue(_options.Darken) ?? request.Look.Darken,
             Saturation = parse.GetValue(_options.Saturation) ?? request.Look.Saturation,
             Contrast = parse.GetValue(_options.Contrast) ?? request.Look.Contrast,
+            Gamma = parse.GetValue(_options.Gamma) ?? request.Look.Gamma,
+
+            // An explicit --saturation wins: it is the more specific instruction, and settling it
+            // here means the renderer, the summary and the manifest all read the same answer.
+            // Toggle still runs first and is not short-circuited past, so --grayscale alongside
+            // --no-grayscale is refused like every other --no- pair.
+            Grayscale = Toggle(parse, _options.Grayscale, _options.NoGrayscale, request.Look.Grayscale)
+                && parse.GetResult(_options.Saturation) is null,
             Blur = parse.GetValue(_options.Blur) ?? request.Look.Blur,
+            Sharpen = parse.GetValue(_options.Sharpen) ?? request.Look.Sharpen,
+            Pixelate = parse.GetValue(_options.Pixelate) ?? request.Look.Pixelate,
+            FadeEdges = parse.GetValue(_options.FadeEdges) ?? request.Look.FadeEdges,
             Grain = parse.GetValue(_options.Grain) ?? request.Look.Grain,
-            Vignette = parse.GetValue(_options.Vignette) || request.Look.Vignette,
-            Mirror = parse.GetValue(_options.Mirror) || request.Look.Mirror,
+            Vignette = Toggle(parse, _options.Vignette, _options.NoVignette, request.Look.Vignette),
+            Mirror = Toggle(parse, _options.Mirror, _options.NoMirror, request.Look.Mirror),
+            FlipVertical = Toggle(
+                parse, _options.FlipVertical, _options.NoFlipVertical, request.Look.FlipVertical),
+            Attribution = parse.GetValue(_options.Attribution) ?? request.Look.Attribution,
+            AttributionPosition = parse.GetValue(_options.AttributionPosition)
+                ?? request.Look.AttributionPosition,
             ZoomEnd = parse.GetValue(_options.Zoom) ?? request.Look.ZoomEnd,
             Speed = parse.GetValue(_options.Speed) ?? request.Look.Speed,
-            OverlayPath = parse.GetValue(_options.Overlay) ?? request.Look.OverlayPath,
-            OverlayOpacity = parse.GetValue(_options.OverlayOpacity) ?? request.Look.OverlayOpacity,
             LutPath = parse.GetValue(_options.Lut) ?? request.Look.LutPath,
         };
 
@@ -163,6 +178,8 @@ internal sealed class ClipRequestBuilder
             UseHardwareDecode = parse.GetValue(_options.HardwareDecode),
         };
 
+        var audio = ResolveAudio(parse, request.Audio);
+
         var duration = parse.GetValue(_options.TargetDuration) ?? request.TargetDuration;
         var splice = parse.GetValue(_options.Splice) ?? request.SpliceLength;
 
@@ -175,13 +192,21 @@ internal sealed class ClipRequestBuilder
             SpliceLength = splice,
             SpliceJitter = parse.GetValue(_options.SpliceJitter) ?? request.SpliceJitter,
             MaxDistinctClips = parse.GetValue(_options.MaxClips) ?? request.MaxDistinctClips,
+
+            // A percentage on the command line, stored as a fraction because that is what it is
+            // compared against.
+            MaxSourceFraction = parse.GetValue(_options.MaxSourcePercent) is { } percent
+                ? percent / 100d
+                : request.MaxSourceFraction,
+            EnforceMaxSourceFraction =
+                parse.GetValue(_options.StrictSourceLimit) || request.EnforceMaxSourceFraction,
             Selection = selection,
             Format = format,
             Look = look,
             Transition = transition,
             Encoder = encoder,
             Analysis = analysis,
-            Mute = !parse.GetValue(_options.Audio) && request.Mute,
+            Audio = audio,
             Parallelism = parse.GetValue(_options.Parallelism) ?? request.Parallelism,
             IgnoreAnalysisCache = parse.GetValue(_options.NoCache),
             DryRun = parse.GetValue(_options.DryRun),
@@ -189,16 +214,179 @@ internal sealed class ClipRequestBuilder
             ManifestPath = parse.GetValue(_options.Manifest),
         };
 
-        var output = outputOverride
-            ?? parse.GetValue(_options.Output)
-            ?? DeriveOutputName(result, profileName);
+        // Only an explicit path is resolved here; a derived one cannot be settled until the plan
+        // is (see EnsureOutputPath). An empty path means "not chosen yet", and the commands fill
+        // it in through EnsureOutputPath once PlanAsync has returned.
+        var output = outputOverride ?? parse.GetValue(_options.Output);
 
-        result = result with { OutputPath = Path.GetFullPath(output) };
+        result = result with
+        {
+            OutputPath = output is null ? string.Empty : Path.GetFullPath(output),
+        };
 
-        Validate(result);
+        // Validation messages name the flag a bound belongs to. The builder tracks no per-field
+        // provenance, so a profile is offered as a second candidate rather than named as the culprit.
+        try
+        {
+            Validate(result);
+        }
+        catch (CliUsageException ex) when (!string.IsNullOrWhiteSpace(profileName))
+        {
+            throw new CliUsageException(
+                $"{ex.Message} Check the option, or profile '{profileName}'.",
+                ex);
+        }
+
+        ValidateAudio(parse, result);
         return result;
     }
 
+    /// <summary>
+    /// Resolves a boolean look option that a profile may also set.
+    /// <para>
+    /// A bare <c>bool</c> flag cannot express "off", only "not mentioned", so ORing it with the
+    /// inherited value would make a profile's <c>true</c> permanent. The paired <c>--no-</c> flag
+    /// supplies the missing third state, restoring "CLI beats profile beats default". Both flags
+    /// together is a contradiction, so it is refused rather than resolved in one direction.
+    /// </para>
+    /// </summary>
+    private static bool Toggle(ParseResult parse, Option<bool> on, Option<bool> off, bool inherited)
+    {
+        var turnedOn = parse.GetValue(on);
+        var turnedOff = parse.GetValue(off);
+
+        if (turnedOn && turnedOff)
+        {
+            throw new CliUsageException($"{on.Name} and {off.Name} cannot both be given.");
+        }
+
+        return turnedOn || (!turnedOff && inherited);
+    }
+
+    /// <summary>
+    /// Resolves the audio mode.
+    /// <para>
+    /// <c>--audio</c>'s meaning depends on whether it was given a value, so presence is read from
+    /// the parse result rather than inferred from the value: a null value means bare
+    /// <c>--audio</c>, which is not the same as absent.
+    /// </para>
+    /// </summary>
+    private AudioOptions ResolveAudio(ParseResult parse, AudioOptions inherited)
+    {
+        var audio = inherited;
+
+        if (parse.GetResult(_options.Audio) is not null)
+        {
+            var path = parse.GetValue(_options.Audio);
+
+            audio = string.IsNullOrWhiteSpace(path)
+                ? AudioOptions.FromSource()
+                : AudioOptions.FromFile(Path.GetFullPath(path));
+        }
+
+        return audio with
+        {
+            Offset = parse.GetValue(_options.AudioOffset) ?? audio.Offset,
+            Volume = parse.GetValue(_options.AudioVolume) ?? audio.Volume,
+            MatchDuration = parse.GetValue(_options.MatchAudio) || audio.MatchDuration,
+        };
+    }
+
+    /// <summary>
+    /// Rejects audio settings that cannot mean anything, before a render is planned.
+    /// <para>
+    /// Separate from <see cref="Validate"/> because these checks need what the user actually
+    /// typed: <c>--match-audio</c> with an explicit <c>--duration</c> is a contradiction, but the
+    /// resolved request cannot tell a typed duration from the default one.
+    /// </para>
+    /// </summary>
+    private void ValidateAudio(ParseResult parse, ClipRequest request)
+    {
+        var audio = request.Audio;
+
+        if (audio.HasExternalTrack && !File.Exists(audio.ExternalPath!))
+        {
+            throw new CliUsageException($"Audio file not found: {audio.ExternalPath}");
+        }
+
+        if (audio.Volume < 0d)
+        {
+            throw new CliUsageException("--audio-volume cannot be negative.");
+        }
+
+        if (audio.Offset < TimeSpan.Zero)
+        {
+            throw new CliUsageException("--audio-offset cannot be negative.");
+        }
+
+        if (audio.MatchDuration)
+        {
+            if (!audio.HasExternalTrack)
+            {
+                throw new CliUsageException(
+                    "--match-audio needs a track to match. Pass one with --audio <path>.");
+            }
+
+            if (parse.GetResult(_options.TargetDuration) is not null)
+            {
+                throw new CliUsageException(
+                    "--match-audio and --duration both set the length of the render. "
+                    + "Drop one: --match-audio takes the length from the track, "
+                    + "--duration states it outright.");
+            }
+        }
+
+        // These only ever apply to a muxed track, so silently ignoring them would hide a typo.
+        if (!audio.HasExternalTrack)
+        {
+            if (parse.GetResult(_options.AudioOffset) is not null)
+            {
+                throw new CliUsageException("--audio-offset only applies to --audio <path>.");
+            }
+
+            if (parse.GetResult(_options.AudioVolume) is not null)
+            {
+                throw new CliUsageException("--audio-volume only applies to --audio <path>.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rejects a value outside <c>[min, max]</c>, and any value that is not a finite number.
+    /// <para>
+    /// The finiteness test is why this is a helper rather than an inline range check.
+    /// <c>System.CommandLine</c>'s <c>double</c> binder accepts "nan" and "infinity", and every
+    /// comparison against NaN is false, so <c>if (x is &lt; 0d or &gt; 1d)</c> admits NaN instead
+    /// of rejecting it. A NaN reaches FFmpeg as the literal <c>NaN</c>, and as a source-usage
+    /// limit it switches the guardrail off entirely, since <c>Limit &gt; 0d</c> is false for it.
+    /// </para>
+    /// </summary>
+    private static void RequireRange(double value, double min, double max, string message)
+    {
+        if (!double.IsFinite(value) || value < min || value > max)
+        {
+            throw new CliUsageException(message);
+        }
+    }
+
+    /// <summary>As <see cref="RequireRange"/>, but the lower bound is exclusive: <c>(min, max]</c>.</summary>
+    private static void RequireAbove(double value, double min, double max, string message)
+    {
+        if (!double.IsFinite(value) || value <= min || value > max)
+        {
+            throw new CliUsageException(message);
+        }
+    }
+
+    /// <summary>
+    /// The single funnel every request passes through, whatever set its values.
+    /// <para>
+    /// Phrased against the resolved <see cref="ClipRequest"/> rather than the parse result, so a
+    /// profile value is held to the same bounds as a typed one. A profile is a config file, not a
+    /// trusted source, and anything it sets that escapes a bound here surfaces as a mid-render
+    /// FFmpeg failure instead of a usage error.
+    /// </para>
+    /// </summary>
     private static void Validate(ClipRequest request)
     {
         if (request.TargetDuration <= TimeSpan.Zero)
@@ -218,34 +406,89 @@ internal sealed class ClipRequestBuilder
                 + $"--duration ({request.TargetDuration.TotalSeconds:0.#}s).");
         }
 
-        if (request.Format.FrameRate is <= 0 or > 240)
+        // Negative jitter would hand SplicePlanner a reversed range. Only a profile can set it,
+        // since the CLI parser rejects a negative duration outright.
+        if (request.SpliceJitter < TimeSpan.Zero)
         {
-            throw new CliUsageException("--fps must be between 0 and 240.");
+            throw new CliUsageException("--splice-jitter cannot be negative.");
         }
+
+        // A non-positive dimension reaches FFmpeg as scale=-100:-50 and fails there. Only a profile
+        // can produce one, but the bound belongs here so both paths answer the same way.
+        if (request.Format.Width <= 0 || request.Format.Height <= 0)
+        {
+            throw new CliUsageException(
+                $"Output resolution must be positive, but is {request.Format.Width}x{request.Format.Height}.");
+        }
+
+        RequireAbove(request.Format.FrameRate, 0d, 240d, "--fps must be between 0 and 240.");
 
         if (request.MaxDistinctClips is { } cap && cap < 1)
         {
             throw new CliUsageException("--max-clips must be at least 1.");
         }
 
+        RequireRange(
+            request.MaxSourceFraction, 0d, 1d, "--max-source-percent must be between 0 and 100.");
+
         if (request.Encoder.Quality is < 0 or > 51)
         {
             throw new CliUsageException("--quality must be between 0 and 51.");
         }
 
-        if (request.Look.Speed <= 0)
+        RequireAbove(request.Look.Speed, 0d, double.MaxValue, "--speed must be greater than zero.");
+        RequireAbove(request.Look.Gamma, 0d, 10d, "--gamma must be between 0 and 10.");
+        RequireRange(request.Look.Sharpen, 0d, 3d, "--sharpen must be between 0 and 3.");
+        RequireRange(request.Look.Darken, 0d, 1d, "--darken must be between 0 and 1.");
+        RequireRange(request.Look.Saturation, 0d, 3d, "--saturation must be between 0 and 3.");
+        RequireRange(request.Look.Contrast, 0d, 3d, "--contrast must be between 0 and 3.");
+        RequireRange(request.Look.Blur, 0d, 50d, "--blur must be between 0 and 50.");
+        RequireRange(request.Look.Grain, 0d, 100d, "--grain must be between 0 and 100.");
+
+        // Zoom is a scale factor, so below 1 is a zoom out and exactly 1 is off. Zero or
+        // negative is not a slower zoom, it is an inverted or collapsed frame.
+        RequireAbove(request.Look.ZoomEnd, 0d, 8d, "--zoom must be between 0 and 8.");
+
+        // 0 is "off" and is the default. The 1.1 floor matches both the help text and the value
+        // PixelateStage clamps to, so an accepted value is never quietly adjusted downstream.
+        if (request.Look.Pixelate != 0d)
         {
-            throw new CliUsageException("--speed must be greater than zero.");
+            RequireRange(request.Look.Pixelate, 1.1d, 16d, "--pixelate must be 0, or between 1.1 and 16.");
+        }
+
+        if (request.Look.FadeEdges < TimeSpan.Zero)
+        {
+            throw new CliUsageException("--fade-edges cannot be negative.");
+        }
+
+        // Half, not the whole length: --fade-edges applies at both ends, so anything longer makes
+        // the two fades meet and the clip never reaches full brightness. Measured against the
+        // shortest clip the settings can produce, not the nominal --splice that --splice-jitter
+        // varies around: FadeEdgesStage clamps whatever it is given, so a bound checked against the
+        // midpoint would admit values the stage quietly reduces while the summary reports the
+        // figure that was asked for.
+        if (request.Look.HasFadeEdges)
+        {
+            var shortest = ShortestSegment(request);
+
+            if (request.Look.FadeEdges * 2 > shortest)
+            {
+                var qualifier = request.SpliceJitter > TimeSpan.Zero
+                    ? $" (--splice {request.SpliceLength.TotalSeconds:0.##}s varied by "
+                      + $"--splice-jitter {request.SpliceJitter.TotalSeconds:0.##}s)"
+                    : string.Empty;
+
+                throw new CliUsageException(
+                    $"--fade-edges ({request.Look.FadeEdges.TotalSeconds:0.##}s) must be at most half "
+                    + $"of the shortest clip, {shortest.TotalSeconds:0.##}s{qualifier}, i.e. "
+                    + $"{(shortest / 2).TotalSeconds:0.##}s. It is applied at both ends, "
+                    + "so anything longer means every clip fades for its whole length.");
+            }
         }
 
         if (request.Selection.Strategy == SelectionStrategy.Cues && request.Selection.Cues.Count == 0)
         {
             throw new CliUsageException("--strategy cues requires at least one timestamp via --cues.");
-        }
-
-        if (request.Look.OverlayPath is { } overlay && !File.Exists(overlay))
-        {
-            throw new CliUsageException($"Overlay image not found: {overlay}");
         }
 
         if (request.Look.LutPath is { } lut && !File.Exists(lut))
@@ -255,6 +498,10 @@ internal sealed class ClipRequestBuilder
 
         var floor = request.Selection.Scoring.MotionFloorMultiple;
         var ceiling = request.Selection.Scoring.MotionCeilingMultiple;
+
+        RequireRange(floor, 0d, 100d, "--motion-floor must be between 0 and 100.");
+        RequireRange(ceiling, 0d, 100d, "--motion-ceiling must be between 0 and 100.");
+
         if (floor >= ceiling)
         {
             throw new CliUsageException(
@@ -263,17 +510,63 @@ internal sealed class ClipRequestBuilder
     }
 
     /// <summary>
+    /// The shortest clip <see cref="SplicePlanner"/> can produce for these settings: the nominal
+    /// splice less the jitter, floored at the planner's own minimum.
+    /// <para>
+    /// That floor rises to twice the transition when one is in use, so it is asked for the same
+    /// way the planner asks rather than assumed to be <see cref="SplicePlanner.MinimumSegment"/>.
+    /// Otherwise this reports a shorter clip than any the planner emits, and admits a
+    /// <c>--fade-edges</c> the render then clamps.
+    /// </para>
+    /// </summary>
+    private static TimeSpan ShortestSegment(ClipRequest request)
+    {
+        var floor = SplicePlanner.MinimumSegmentFor(
+            request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero);
+
+        var shortest = request.SpliceLength - request.SpliceJitter;
+
+        return shortest > floor ? shortest : floor;
+    }
+
+    /// <summary>
+    /// Fills in a derived output path when the user did not name one.
+    /// <para>
+    /// Takes the request the pipeline settled on rather than the one <see cref="Build"/> returned.
+    /// The derived name states the render's duration, and <c>--match-audio</c> replaces that
+    /// duration during planning, so a pre-plan name describes the wrong render and two tracks of
+    /// different lengths would derive the same name and write over each other.
+    /// </para>
+    /// <para>
+    /// Idempotent, so a caller that has already resolved a path can pass it through unexamined.
+    /// </para>
+    /// </summary>
+    internal static ClipRequest EnsureOutputPath(ClipRequest request, string? profileName)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!string.IsNullOrEmpty(request.OutputPath))
+        {
+            return request;
+        }
+
+        return request with
+        {
+            OutputPath = Path.GetFullPath(DeriveOutputName(request, profileName)),
+        };
+    }
+
+    /// <summary>
     /// Derives a self-describing output name from the first source and the settings that
     /// distinguish one render from another, e.g. <c>Alien-bg-shorts-1080x1920-1m30s-q20.mp4</c>.
     /// <para>
     /// Source, profile, resolution, runtime and quality are always present. Everything else
-    /// appears only when it differs from the built-in default, so an ordinary render keeps a
-    /// short name while an unusual one carries the reason it looks different. Renders that
-    /// differ in any named setting no longer overwrite each other.
+    /// appears only when it differs from the built-in default, so renders that differ in any
+    /// named setting do not overwrite each other.
     /// </para>
     /// <para>
-    /// Exposed so <c>batch</c> can re-derive a name per variant: each one gets its own seed,
-    /// and a name carrying the template's seed would be a lie.
+    /// Exposed so <c>batch</c> can re-derive a name per variant: each one gets its own seed, and
+    /// a name carrying the template's seed would be a lie.
     /// </para>
     /// </summary>
     internal static string DeriveOutputName(ClipRequest request, string? profileName)
