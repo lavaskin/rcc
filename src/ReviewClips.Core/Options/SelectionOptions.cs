@@ -60,7 +60,7 @@ public sealed record ScoringOptions
     public double MotionCeilingMultiple { get; init; } = 4.0d;
 
     /// <summary>
-    /// How strongly to penalise uneven windows. High variance usually means the window
+    /// How strongly to penalize uneven windows. High variance usually means the window
     /// straddles a cut or contains a flash.
     /// </summary>
     public double StabilityWeight { get; init; } = 0.35d;
@@ -93,7 +93,7 @@ public sealed record SelectionOptions
     public ChapterSkipMode ChapterSkip { get; init; } = ChapterSkipMode.Auto;
 
     /// <summary>
-    /// Extra chapter title patterns to skip, always honoured regardless of
+    /// Extra chapter title patterns to skip, always honored regardless of
     /// <see cref="ChapterSkip"/>. Matched as case-insensitive substrings, or as globs when the
     /// pattern contains <c>*</c> or <c>?</c>.
     /// </summary>

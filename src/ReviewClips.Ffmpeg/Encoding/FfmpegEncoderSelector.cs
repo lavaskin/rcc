@@ -88,7 +88,7 @@ public sealed class FfmpegEncoderSelector : IEncoderSelector
         QualityArguments =
         [
             // Constant-quality NVENC: VBR rate control with a target CQ and no bitrate cap.
-            // Omitting '-b:v 0' makes NVENC honour a default bitrate instead of the CQ value.
+            // Omitting '-b:v 0' makes NVENC honor a default bitrate instead of the CQ value.
             "-rc", "vbr",
             "-cq", options.Quality.ToString(CultureInfo.InvariantCulture),
             "-b:v", "0",

@@ -11,7 +11,7 @@ namespace ReviewClips.Cli.Tests;
 /// <para>
 /// Goes through the real <see cref="GenerateOptions"/> and the real parser rather than
 /// constructing a <see cref="ClipRequest"/> directly, so tests cover option binding, then profile
-/// layering, then validation. The interesting behaviour is in the joins between those three, and
+/// layering, then validation. The interesting behavior is in the joins between those three, and
 /// a hand-built request has no joins.
 /// </para>
 /// </summary>

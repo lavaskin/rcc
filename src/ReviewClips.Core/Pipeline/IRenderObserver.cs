@@ -7,7 +7,7 @@ public enum RenderPhase
     Selecting,
     Extracting,
     Stitching,
-    Finalising,
+    Finalizing,
 }
 
 /// <summary>

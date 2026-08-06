@@ -13,7 +13,7 @@ namespace ReviewClips.Cli.Tests;
 public class GrayscaleResolutionTests
 {
     [Fact]
-    public void GrayscaleAloneDropsAllColour()
+    public void GrayscaleAloneDropsAllColor()
     {
         using var harness = new RequestBuilderHarness();
 
@@ -23,7 +23,7 @@ public class GrayscaleResolutionTests
         look.EffectiveSaturation.ShouldBe(0d);
     }
 
-    /// <summary>An explicit amount of colour is the more recent and more specific instruction.</summary>
+    /// <summary>An explicit amount of color is the more recent and more specific instruction.</summary>
     [Fact]
     public void AnExplicitSaturationBeatsGrayscale()
     {
@@ -35,9 +35,9 @@ public class GrayscaleResolutionTests
         look.EffectiveSaturation.ShouldBe(0.5d);
     }
 
-    /// <summary>And it beats a profile that drops colour, the same way.</summary>
+    /// <summary>And it beats a profile that drops color, the same way.</summary>
     [Fact]
-    public void AnExplicitSaturationBeatsAProfileThatDropsColour()
+    public void AnExplicitSaturationBeatsAProfileThatDropsColor()
     {
         using var harness = new RequestBuilderHarness(
             new RenderProfile { Name = "mono", Grayscale = true });

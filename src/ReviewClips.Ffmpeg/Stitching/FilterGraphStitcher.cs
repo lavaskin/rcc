@@ -79,7 +79,7 @@ public sealed class FilterGraphStitcher : IStitcher
         }
 
         // Only per-segment audio needs graph work: an external track is one continuous stream,
-        // mapped straight through, with no neighbouring clips to acrossfade into.
+        // mapped straight through, with no neighboring clips to acrossfade into.
         var graph = plan.BuildGraph(request.UsesSegmentAudio);
 
         arguments.AddRange(["-filter_complex", graph]);
@@ -244,7 +244,7 @@ public sealed record StitchPlan
 
         if (requested > TimeSpan.Zero && durations.Count > 1)
         {
-            // xfade consumes the transition from both neighbours. If it is not comfortably
+            // xfade consumes the transition from both neighbors. If it is not comfortably
             // shorter than the shortest clip, the graph either errors or eats a clip whole.
             var shortest = durations.Min();
             var ceiling = TimeSpan.FromSeconds(shortest.TotalSeconds / 2);

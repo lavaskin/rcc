@@ -87,7 +87,7 @@ public class VideoFilterGraphBuilderTests
     [Fact]
     public void ToneMap_StatesInputColorCharacteristicsExplicitly()
     {
-        // Leaving these implicit makes zscale fail on files with partial colour metadata.
+        // Leaving these implicit makes zscale fail on files with partial color metadata.
         var graph = Build(Context(Source(colorTransfer: "smpte2084")));
 
         graph.ShouldContain("setparams=color_trc=smpte2084");
@@ -373,9 +373,9 @@ public class VideoFilterGraphBuilderTests
     }
 
     [Fact]
-    public void FrameRateNormalisation_IsAlwaysApplied()
+    public void FrameRateNormalization_IsAlwaysApplied()
     {
-        // Variable-frame-rate sources otherwise desynchronise when concatenated.
+        // Variable-frame-rate sources otherwise desynchronize when concatenated.
         Build(Context(format: OutputFormat.Youtube with { FrameRate = 30 }))
             .ShouldContain("fps=30");
     }
@@ -525,7 +525,7 @@ public class TreatmentStageTests
         Build(LookOptions.None).ShouldNotContain("neighbor");
 
     [Fact]
-    public void Pixelate_DownscalesAndUpscalesWithNearestNeighbour()
+    public void Pixelate_DownscalesAndUpscalesWithNearestNeighbor()
     {
         // 1920x1080 at factor 4 is 480x270, then back to full size.
         var graph = Build(LookOptions.None with { Pixelate = 4 });

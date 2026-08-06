@@ -311,7 +311,7 @@ public class ExternalAudioTests
         var arguments = string.Join(' ', Graph().DescribeArguments(request));
 
         // The external track is one continuous stream, so acrossfade — which exists to blend
-        // neighbouring clips' own audio — must not appear.
+        // neighboring clips' own audio — must not appear.
         arguments.ShouldNotContain("acrossfade");
         arguments.ShouldNotContain("[aout]");
 

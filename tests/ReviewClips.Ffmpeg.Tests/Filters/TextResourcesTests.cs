@@ -3,7 +3,7 @@ using ReviewClips.Ffmpeg.Filters;
 namespace ReviewClips.Ffmpeg.Tests.Filters;
 
 /// <summary>
-/// Content-addressed materialisation of attribution text. The design rests on three claims:
+/// Content-addressed materialization of attribution text. The design rests on three claims:
 /// identical text always resolves to the same path, parallel extractions therefore need no
 /// coordination, and what lands on disk is exactly the bytes drawtext should read.
 /// </summary>
@@ -201,7 +201,7 @@ public class TextResourcesTests
     [Fact]
     public void SweepOnAnAbsentDirectoryIsHarmless()
     {
-        // Nothing has necessarily ever been materialised when doctor --clear-cache runs.
+        // Nothing has necessarily ever been materialized when doctor --clear-cache runs.
         TextResources.Sweep();
         TextResources.Sweep().ShouldBeGreaterThanOrEqualTo(0);
     }

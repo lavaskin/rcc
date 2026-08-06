@@ -10,8 +10,8 @@ passed via `ProcessStartInfo.ArgumentList` rather than a command string, since m
 contain spaces, quotes, and brackets.
 
 **Analysis metadata is read from stdout, not a file.** FFmpeg reopens `metadata=print:file=`
-targets in truncate mode when the filter graph reinitialises, which any mid-stream format change
-triggers. A file target therefore retains only the frames after the final reinitialisation.
+targets in truncate mode when the filter graph reinitializes, which any mid-stream format change
+triggers. A file target therefore retains only the frames after the final reinitialization.
 Progress is derived from the metadata timestamps, since `-progress` would contend for stdout.
 
 **Detector output requires `info` log level.** `scdet`, `blackdetect`, and `freezedetect` report on
@@ -36,7 +36,7 @@ often enough to be tempting and wrong often enough to put a credit crawl in the 
 inferred. Only a title that names the material triggers an exclusion, which means the feature does
 nothing at all on the many rips whose chapters are named `Chapter 01` onwards — an honest no-op is
 preferable to a heuristic that silently discards an act of the film. Titles that only restate the
-chapter number are recognised as such and never matched, so a pattern like `*1*` cannot catch them.
+chapter number are recognized as such and never matched, so a pattern like `*1*` cannot catch them.
 Chapter ranges are subtracted unpadded, unlike detected black stretches, because a container states
 its boundaries exactly; clips still cannot bleed across one, since a candidate window must fit
 entirely inside a single eligible range.
@@ -53,7 +53,7 @@ signal thread.
 iteration.
 
 **Cue renders solve that arithmetic separately, in closed form.** A cue list fixes the clip count
-up front, so there is nothing to iterate towards: `SplicePlanner.PlanEqualForOutput` divides
+up front, so there is nothing to iterate toward: `SplicePlanner.PlanEqualForOutput` divides
 `target + transition * (N-1)` by N directly, re-solving against the clamped form when the
 transition exceeds half a clip. It exists because the budget from `PlanForOutput` is only valid for
 the clip count that method arrived at. Spending it over a cue count instead pays back a different
@@ -84,7 +84,7 @@ removed it. Enumerating whatever happened to be enabled is easier and misleads: 
 rejection are on by default, so a render refused because `--range` named a two-second window was
 being advised to try `--no-reject-black`, which costs an analysis pass and changes nothing. Going
 through the real code path rather than reimplementing the subtractions is what keeps the
-explanation from drifting away from the behaviour it explains.
+explanation from drifting away from the behavior it explains.
 
 **Attribution text is passed through `drawtext`'s `textfile=`, never `text=`.** A film title is
 precisely the kind of string that breaks FFmpeg's filter grammar: `Leon: The Professional` has a

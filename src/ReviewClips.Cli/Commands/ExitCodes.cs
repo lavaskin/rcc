@@ -14,7 +14,7 @@ internal static class ExitCodes
     public const int ToolFailure = 4;
 
     /// <summary>Interrupted. Matches the shell convention of 128 + SIGINT.</summary>
-    public const int Cancelled = 130;
+    public const int Canceled = 130;
 
     public const int UnexpectedError = 70;
 }

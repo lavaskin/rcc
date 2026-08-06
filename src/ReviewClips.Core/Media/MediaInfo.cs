@@ -17,7 +17,7 @@ public sealed record MediaInfo
 
     public required int Height { get; init; }
 
-    /// <summary>Average frame rate, used to normalise output timing.</summary>
+    /// <summary>Average frame rate, used to normalize output timing.</summary>
     public required double FrameRate { get; init; }
 
     public required string VideoCodec { get; init; }
@@ -43,7 +43,7 @@ public sealed record MediaInfo
 
     /// <summary>
     /// True for PQ (HDR10) or HLG transfer functions. Such sources must be tone-mapped
-    /// or the output renders washed-out and grey.
+    /// or the output renders washed-out and gray.
     /// </summary>
     public bool IsHdr =>
         ColorTransfer is "smpte2084" or "arib-std-b67";

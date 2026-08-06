@@ -652,7 +652,7 @@ public sealed class EnvironmentInspector
             {
                 FilterPresent = true,
                 Usable = result.Success,
-                Error = result.Success ? null : Summarise(result.StandardError),
+                Error = result.Success ? null : Summarize(result.StandardError),
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -667,7 +667,7 @@ public sealed class EnvironmentInspector
     }
 
     /// <summary>First non-empty line of an FFmpeg error, which is the part worth showing.</summary>
-    private static string Summarise(string standardError)
+    private static string Summarize(string standardError)
     {
         var line = standardError
             .Split('\n')

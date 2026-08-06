@@ -8,7 +8,7 @@ using ReviewClips.Ffmpeg.Process;
 namespace ReviewClips.Ffmpeg.Extraction;
 
 /// <summary>
-/// Cuts one segment out of a source file and normalises it to the target format.
+/// Cuts one segment out of a source file and normalizes it to the target format.
 /// <para>
 /// Every segment is written with identical geometry, frame rate, pixel format and timebase.
 /// That uniformity is what lets the stitcher join them with a stream copy instead of a second
@@ -151,7 +151,7 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-pix_fmt", request.Encoder.PixelFormat]);
 
         // Force constant frame rate. Variable timestamps survive the fps filter in some
-        // containers and then desynchronise the concatenated result.
+        // containers and then desynchronize the concatenated result.
         arguments.AddRange(["-fps_mode", "cfr"]);
         arguments.AddRange(["-r", Number(request.Format.FrameRate)]);
 

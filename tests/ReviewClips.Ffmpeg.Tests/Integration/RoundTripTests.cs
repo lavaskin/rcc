@@ -97,7 +97,7 @@ public class RoundTripTests
     }
 
     [Fact]
-    public async Task ExtractedSegmentsAreNormalisedToIdenticalGeometry()
+    public async Task ExtractedSegmentsAreNormalizedToIdenticalGeometry()
     {
         Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
 

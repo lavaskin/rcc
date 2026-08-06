@@ -4,7 +4,7 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Tests.Selection;
 
 /// <summary>
-/// Behaviour every strategy must satisfy. These encode three bugs found during end-to-end
+/// Behavior every strategy must satisfy. These encode three bugs found during end-to-end
 /// testing: clips clustering into a few seconds of runtime, clips overlapping each other, and
 /// the second distribution pass ignoring spacing already established by the first.
 /// </summary>
@@ -56,7 +56,7 @@ public class SegmentSelectorTests
 
     [Theory]
     [MemberData(nameof(AllGridStrategies))]
-    public void Segments_HonourMinGapWhenItIsAchievable(SelectionStrategy strategy)
+    public void Segments_HonorMinGapWhenItIsAchievable(SelectionStrategy strategy)
     {
         var info = SelectionTestData.Info(1200);
         var analysis = SelectionTestData.Analysis(info);
@@ -162,7 +162,7 @@ public class SegmentSelectorTests
 
     [Theory]
     [MemberData(nameof(AllGridStrategies))]
-    public void Segments_HonourExplicitIncludeRanges(SelectionStrategy strategy)
+    public void Segments_HonorExplicitIncludeRanges(SelectionStrategy strategy)
     {
         var info = SelectionTestData.Info(1000);
         var analysis = SelectionTestData.Analysis(info);

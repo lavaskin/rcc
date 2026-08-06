@@ -65,7 +65,7 @@ public sealed record ClipRequest
     public int Parallelism { get; init; } = 4;
 
     /// <summary>
-    /// Re-analyse sources even when a cached result exists, and overwrite it. The cache key
+    /// Re-analyze sources even when a cached result exists, and overwrite it. The cache key
     /// already covers file identity and every analysis setting, so this is rarely needed.
     /// </summary>
     public bool IgnoreAnalysisCache { get; init; }

@@ -5,7 +5,7 @@ namespace ReviewClips.Core.Options;
 /// <summary>How source footage is made to fit a target frame whose aspect ratio differs.</summary>
 public enum FitMode
 {
-    /// <summary>Scale to cover, then centre-crop. Fills the frame, loses the edges.</summary>
+    /// <summary>Scale to cover, then center-crop. Fills the frame, loses the edges.</summary>
     Crop,
 
     /// <summary>Scale to fit over a blurred, zoomed copy of itself. The standard vertical/Shorts look.</summary>
@@ -30,7 +30,7 @@ public enum ToneMapMode
     Reinhard,
 }
 
-/// <summary>Geometry, timing and colour of the rendered output.</summary>
+/// <summary>Geometry, timing and color of the rendered output.</summary>
 public sealed record OutputFormat
 {
     public static OutputFormat Youtube { get; } = new() { Width = 1920, Height = 1080 };

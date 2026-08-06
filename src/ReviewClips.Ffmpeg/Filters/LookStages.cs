@@ -29,7 +29,7 @@ public sealed class LookStage : IVideoFilterStage
             // any scene brightness. lutyuv, not colorlevels: colorlevels gives near-identical
             // numbers but segfaults FFmpeg 8.1 in this position in the graph. Anchoring on
             // minval keeps the black pedestal legal at any bit depth, and staying luma-only
-            // leaves chroma untouched so colours do not wash out.
+            // leaves chroma untouched so colors do not wash out.
             var scale = Num(Math.Clamp(1d - look.Darken, 0d, 1d));
             filters.Add($"lutyuv=y=minval+(val-minval)*{scale}");
         }
@@ -94,7 +94,7 @@ public sealed class VignetteStage : IVideoFilterStage
         writer.AddChain(inputLabel, outputLabel, "vignette=PI/5");
 }
 
-/// <summary>Adds film grain. Temporal noise also helps mask compression artefacts on dark footage.</summary>
+/// <summary>Adds film grain. Temporal noise also helps mask compression artifacts on dark footage.</summary>
 public sealed class GrainStage : IVideoFilterStage
 {
     public int Order => FilterStageOrder.Grain;
@@ -110,7 +110,7 @@ public sealed class GrainStage : IVideoFilterStage
     }
 }
 
-/// <summary>Applies a 3D LUT for colour grading.</summary>
+/// <summary>Applies a 3D LUT for color grading.</summary>
 public sealed class LutStage : IVideoFilterStage
 {
     public int Order => FilterStageOrder.Lut;

@@ -93,7 +93,7 @@ public sealed class MotionCurve
         return Math.Sqrt(sumSquares / (to - from));
     }
 
-    /// <summary>Median of all samples. Used to normalise thresholds per-title rather than globally.</summary>
+    /// <summary>Median of all samples. Used to normalize thresholds per-title rather than globally.</summary>
     public double Median()
     {
         if (_values.Length == 0)

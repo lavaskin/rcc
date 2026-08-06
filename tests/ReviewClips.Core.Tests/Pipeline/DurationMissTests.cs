@@ -113,7 +113,7 @@ public class DurationMissTests
     }
 
     /// <summary>
-    /// The tolerance has to clear the frame-quantisation residual without swallowing a real
+    /// The tolerance has to clear the frame-quantization residual without swallowing a real
     /// miss, and it scales so that it stays meaningful on a long render.
     /// </summary>
     [Theory]

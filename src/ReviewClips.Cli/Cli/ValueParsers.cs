@@ -219,8 +219,8 @@ internal static class ValueParsers
                 }
 
                 // Accept kebab-case as well as the enum's own spelling.
-                var normalised = text.Replace("-", string.Empty, StringComparison.Ordinal);
-                if (Enum.TryParse<T>(normalised, ignoreCase: true, out var value))
+                var normalized = text.Replace("-", string.Empty, StringComparison.Ordinal);
+                if (Enum.TryParse<T>(normalized, ignoreCase: true, out var value))
                 {
                     return value;
                 }

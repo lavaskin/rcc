@@ -444,7 +444,7 @@ public class FilterGraphExecutionTests
 }
 
 /// <summary>
-/// Tonal behaviour of the look pipeline, verified on rendered pixels rather than on the graph
+/// Tonal behavior of the look pipeline, verified on rendered pixels rather than on the graph
 /// string. A graph can be structurally valid and still produce an unusable picture.
 /// </summary>
 [Collection(FfmpegTestGroup.Name)]

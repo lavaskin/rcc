@@ -6,7 +6,7 @@ using ReviewClips.Core.Selection;
 namespace ReviewClips.Core.Pipeline;
 
 /// <summary>
-/// Orchestrates a render: probe, analyse, select, extract in parallel, stitch.
+/// Orchestrates a render: probe, analyze, select, extract in parallel, stitch.
 /// Owns no FFmpeg knowledge; everything concrete arrives through the abstractions.
 /// </summary>
 public sealed class RenderPipeline
@@ -19,7 +19,7 @@ public sealed class RenderPipeline
 
     /// <summary>
     /// How far an external track may fall short of the render before it is remarked upon. Wide
-    /// enough to absorb frame quantisation and the splice planner's convergence tolerance.
+    /// enough to absorb frame quantization and the splice planner's convergence tolerance.
     /// </summary>
     private static readonly TimeSpan ShortAudioTolerance = TimeSpan.FromSeconds(0.25);
 
@@ -150,7 +150,7 @@ public sealed class RenderPipeline
 
         var selector = _selectorFactory.Create(request.Selection.Strategy);
 
-        // 4. Analyse only when the strategy actually needs it.
+        // 4. Analyze only when the strategy actually needs it.
         var needsAnalysis = selector.RequiresAnalysis || request.Selection.RequiresAnalysis;
         var sources = new List<SourceMedia>(infos.Count);
 
@@ -302,7 +302,7 @@ public sealed class RenderPipeline
         }
 
         // 8. Check the finished plan against what was actually asked for. Everything above plans
-        // towards the target rather than measuring against it, and each stage has its own way of
+        // toward the target rather than measuring against it, and each stage has its own way of
         // falling short, so the miss is caught once here rather than left to the finished file.
         if (DescribeDurationMiss(request, segments, reportedShortCount) is { } durationMessage)
         {
@@ -432,7 +432,7 @@ public sealed class RenderPipeline
             EnsureOutputDirectory(request.OutputPath);
             await stitcher.StitchAsync(stitchRequest, new InlineProgress<double>(observer.OnStitchProgress), cancellationToken);
 
-            observer.OnPhaseStarted(RenderPhase.Finalising, Path.GetFileName(request.OutputPath));
+            observer.OnPhaseStarted(RenderPhase.Finalizing, Path.GetFileName(request.OutputPath));
 
             var size = File.Exists(request.OutputPath) ? new FileInfo(request.OutputPath).Length : 0L;
 
@@ -602,11 +602,11 @@ public sealed class RenderPipeline
         }
         catch (Exception ex)
         {
-            // Analysis is an optimisation, not a requirement. Degrade to unanalysed rather
+            // Analysis is an optimization, not a requirement. Degrade to unanalyzed rather
             // than failing the whole render.
             _logger.LogWarning(ex, "Analysis failed for {Path}", info.Path);
             var message = $"Analysis failed for '{Path.GetFileName(info.Path)}' ({ex.Message}). "
-                + "Falling back to unanalysed selection for this file.";
+                + "Falling back to unanalyzed selection for this file.";
             warnings.Add(message);
             observer.OnWarning(message);
             return null;

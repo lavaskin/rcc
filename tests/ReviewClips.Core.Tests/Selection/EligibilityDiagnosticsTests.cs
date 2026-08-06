@@ -44,7 +44,7 @@ public class EligibilityDiagnosticsTests
             SourceSizeBytes = info.FileSizeBytes,
             SourceModifiedUtc = info.LastModifiedUtc,
             Duration = info.Duration,
-            AnalysedAtUtc = DateTimeOffset.UnixEpoch,
+            AnalyzedAtUtc = DateTimeOffset.UnixEpoch,
             Settings = new AnalysisSettings(),
             SceneCuts = [],
             BlackRanges = black ?? [],

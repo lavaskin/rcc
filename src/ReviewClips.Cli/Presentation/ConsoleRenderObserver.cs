@@ -35,11 +35,11 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
         var label = phase switch
         {
             RenderPhase.Probing => "Probing",
-            RenderPhase.Analyzing => "Analysing",
+            RenderPhase.Analyzing => "Analyzing",
             RenderPhase.Selecting => "Selecting",
             RenderPhase.Extracting => "Extracting",
             RenderPhase.Stitching => "Stitching",
-            RenderPhase.Finalising => "Finalising",
+            RenderPhase.Finalizing => "Finalizing",
             _ => phase.ToString(),
         };
 
@@ -113,8 +113,8 @@ internal sealed class ConsoleRenderObserver : IRenderObserver
             return;
         }
 
-        var colour = count >= requested ? "green" : "yellow";
-        _console.MarkupLine($"  [{colour}]{count}[/] of {requested} segments placed");
+        var color = count >= requested ? "green" : "yellow";
+        _console.MarkupLine($"  [{color}]{count}[/] of {requested} segments placed");
     }
 
     public void OnSegmentCompleted(int completed, int total)

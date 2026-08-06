@@ -45,7 +45,7 @@ public sealed class FfmpegMediaAnalyzer : IMediaAnalyzer
         var metadata = new MetadataStreamParser();
         var arguments = BuildArguments(info, settings);
 
-        _logger.LogDebug("Analysing {Path}", info.Path);
+        _logger.LogDebug("Analyzing {Path}", info.Path);
 
         var lastReported = -1d;
 
@@ -103,7 +103,7 @@ public sealed class FfmpegMediaAnalyzer : IMediaAnalyzer
         }
 
         _logger.LogInformation(
-            "Analysed {File}: {Cuts} cuts, {Black} black, {Freeze} frozen, {Samples} motion samples",
+            "Analyzed {File}: {Cuts} cuts, {Black} black, {Freeze} frozen, {Samples} motion samples",
             Path.GetFileName(info.Path),
             logParser.SceneCuts.Count,
             logParser.BlackRanges.Count,

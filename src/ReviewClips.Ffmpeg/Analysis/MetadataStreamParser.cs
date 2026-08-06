@@ -19,12 +19,12 @@ namespace ReviewClips.Ffmpeg.Analysis;
 /// </para>
 /// <para>
 /// Reading from stdout rather than a temp file is load-bearing: FFmpeg reopens the target of
-/// <c>file=</c> in truncate mode whenever the filter graph is reinitialised, which any
+/// <c>file=</c> in truncate mode whenever the filter graph is reinitialized, which any
 /// mid-stream format change triggers — concatenated files routinely do — leaving only the
 /// frames after the final reinit. Streaming is immune, since nothing can be rewound.
 /// </para>
 /// <para>
-/// Frame indices reset on reinitialisation, so only <c>pts_time</c> is trusted for positioning.
+/// Frame indices reset on reinitialization, so only <c>pts_time</c> is trusted for positioning.
 /// </para>
 /// </summary>
 public sealed class MetadataStreamParser

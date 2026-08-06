@@ -94,5 +94,5 @@ dotnet_naming_symbols.static_readonly_fields.required_modifiers = static,readonl
 
 [tests/**/*.cs]
 # Test classes are instantiated by xUnit and their fields are assigned in the constructor;
-# the public-API analysers have nothing useful to say about them.
+# the public-API analyzers have nothing useful to say about them.
 dotnet_diagnostic.CA1707.severity = none

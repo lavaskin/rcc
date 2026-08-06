@@ -5,7 +5,7 @@ using ReviewClips.Ffmpeg.Process;
 namespace ReviewClips.Ffmpeg.Tests.Integration;
 
 /// <summary>
-/// Shared FFmpeg-backed fixture. All test media is synthesised with <c>lavfi</c> sources, so the
+/// Shared FFmpeg-backed fixture. All test media is synthesized with <c>lavfi</c> sources, so the
 /// suite needs no sample files and no copyrighted material to run anywhere, including CI.
 /// </summary>
 public sealed class FfmpegFixture : IAsyncLifetime
@@ -72,12 +72,12 @@ public sealed class FfmpegFixture : IAsyncLifetime
             return;
         }
 
-        SimpleClip = await SynthesiseAsync(
+        SimpleClip = await SynthesizeAsync(
             "simple.mp4",
             ["-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30", "-t", "10"],
             []);
 
-        AnamorphicClip = await SynthesiseAsync(
+        AnamorphicClip = await SynthesizeAsync(
             "anamorphic.mp4",
             ["-f", "lavfi", "-i", "testsrc2=s=720x480:r=30", "-t", "8"],
             ["-vf", "setsar=32/27"]);
@@ -102,8 +102,8 @@ public sealed class FfmpegFixture : IAsyncLifetime
                 ("Chapter 02", 5_000, 10_000),
             ]);
 
-        AudioTrack = await SynthesiseAudioAsync("track.wav", 6);
-        MultiTrackAudio = await SynthesiseMultiTrackAudioAsync("multitrack.mkv", 6, tracks: 3);
+        AudioTrack = await SynthesizeAudioAsync("track.wav", 6);
+        MultiTrackAudio = await SynthesizeMultiTrackAudioAsync("multitrack.mkv", 6, tracks: 3);
 
         var filters = await Runner.RunFfmpegAsync(
             ["-hide_banner", "-filters"],
@@ -253,7 +253,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Decodes one frame to 8-bit greyscale and reports luma statistics. Failures in the look
+    /// Decodes one frame to 8-bit grayscale and reports luma statistics. Failures in the look
     /// pipeline are tonal rather than structural: a valid graph can still produce a black frame.
     /// </summary>
     public async Task<(double Mean, int Median, int Max)> LumaStatsAsync(string path, double atSeconds = 1)
@@ -312,7 +312,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
             : (0, 0);
     }
 
-    private async Task<string> SynthesiseAsync(
+    private async Task<string> SynthesizeAsync(
         string name,
         IReadOnlyList<string> input,
         IReadOnlyList<string> extra)
@@ -327,14 +327,14 @@ public sealed class FfmpegFixture : IAsyncLifetime
         var result = await Runner.RunFfmpegAsync(arguments, CancellationToken.None);
         if (!result.Success)
         {
-            throw new InvalidOperationException($"Could not synthesise {name}: {result.StandardError}");
+            throw new InvalidOperationException($"Could not synthesize {name}: {result.StandardError}");
         }
 
         return path;
     }
 
-    /// <summary>Synthesises an audio-only file with no video stream whatsoever.</summary>
-    private async Task<string> SynthesiseAudioAsync(string name, double seconds)
+    /// <summary>Synthesizes an audio-only file with no video stream whatsoever.</summary>
+    private async Task<string> SynthesizeAudioAsync(string name, double seconds)
     {
         var path = Path.Combine(Directory, name);
 
@@ -350,7 +350,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
 
         if (!result.Success)
         {
-            throw new InvalidOperationException($"Could not synthesise {name}: {result.StandardError}");
+            throw new InvalidOperationException($"Could not synthesize {name}: {result.StandardError}");
         }
 
         return path;
@@ -382,10 +382,10 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Synthesises an audio-only file carrying several distinct audio streams. Each track gets its
+    /// Synthesizes an audio-only file carrying several distinct audio streams. Each track gets its
     /// own frequency so they are genuinely separate; Matroska rather than WAV, which holds only one.
     /// </summary>
-    private async Task<string> SynthesiseMultiTrackAudioAsync(string name, double seconds, int tracks)
+    private async Task<string> SynthesizeMultiTrackAudioAsync(string name, double seconds, int tracks)
     {
         var path = Path.Combine(Directory, name);
         var arguments = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
@@ -414,7 +414,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
         var result = await Runner.RunFfmpegAsync(arguments, CancellationToken.None);
         if (!result.Success)
         {
-            throw new InvalidOperationException($"Could not synthesise {name}: {result.StandardError}");
+            throw new InvalidOperationException($"Could not synthesize {name}: {result.StandardError}");
         }
 
         return path;
@@ -490,17 +490,17 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Three distinct shots plus a black stretch, concatenated. Gives the analyser real cuts,
+    /// Three distinct shots plus a black stretch, concatenated. Gives the analyzer real cuts,
     /// a black region and a frozen region to find.
     /// </summary>
     private async Task<string> BuildMultiShotAsync()
     {
         var parts = new List<string>
         {
-            await SynthesiseAsync("shot1.mp4", ["-f", "lavfi", "-i", "testsrc2=s=640x360:r=30", "-t", "7"], []),
-            await SynthesiseAsync("shot2.mp4", ["-f", "lavfi", "-i", "mandelbrot=s=640x360:r=30", "-t", "7"], []),
-            await SynthesiseAsync("black.mp4", ["-f", "lavfi", "-i", "color=black:s=640x360:r=30", "-t", "3"], []),
-            await SynthesiseAsync("shot3.mp4", ["-f", "lavfi", "-i", "rgbtestsrc=s=640x360:r=30", "-t", "3"], []),
+            await SynthesizeAsync("shot1.mp4", ["-f", "lavfi", "-i", "testsrc2=s=640x360:r=30", "-t", "7"], []),
+            await SynthesizeAsync("shot2.mp4", ["-f", "lavfi", "-i", "mandelbrot=s=640x360:r=30", "-t", "7"], []),
+            await SynthesizeAsync("black.mp4", ["-f", "lavfi", "-i", "color=black:s=640x360:r=30", "-t", "3"], []),
+            await SynthesizeAsync("shot3.mp4", ["-f", "lavfi", "-i", "rgbtestsrc=s=640x360:r=30", "-t", "3"], []),
         };
 
         var listPath = Path.Combine(Directory, "concat.txt");

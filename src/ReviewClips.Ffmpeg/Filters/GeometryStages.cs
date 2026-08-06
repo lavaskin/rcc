@@ -5,7 +5,7 @@ namespace ReviewClips.Ffmpeg.Filters;
 
 /// <summary>
 /// Converts HDR (PQ / HLG) sources to SDR BT.709 via linear light, a floating-point tone-map,
-/// and a return to BT.709. Without it an HDR remux re-encoded as SDR renders washed-out and grey.
+/// and a return to BT.709. Without it an HDR remux re-encoded as SDR renders washed-out and gray.
 /// </summary>
 public sealed class ToneMapStage : IVideoFilterStage
 {
@@ -154,7 +154,7 @@ public sealed class FitStage : IVideoFilterStage
 
     /// <summary>
     /// The standard vertical-video treatment: a blurred, cropped copy fills the frame with the
-    /// unmodified source centred on top. Branches, so it emits several chains.
+    /// unmodified source centerd on top. Branches, so it emits several chains.
     /// </summary>
     private static void EmitBlurPad(
         FilterGraphWriter writer,

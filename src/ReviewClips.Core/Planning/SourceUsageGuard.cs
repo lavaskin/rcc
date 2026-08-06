@@ -86,7 +86,7 @@ public sealed record SourceUsageReport
 /// </para>
 /// <para>
 /// This is an aesthetic and record-keeping aid, not legal advice. Proportion used is one of
-/// several factors that matter and a small proportion is not a safe harbour. See LEGAL.md.
+/// several factors that matter and a small proportion is not a safe harbor. See LEGAL.md.
 /// </para>
 /// </summary>
 public static class SourceUsageGuard

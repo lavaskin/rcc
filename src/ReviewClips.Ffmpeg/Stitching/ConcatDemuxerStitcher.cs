@@ -11,7 +11,7 @@ namespace ReviewClips.Ffmpeg.Stitching;
 /// <para>
 /// The fast path: no re-encoding at all. Applies only when there are no transitions and no
 /// fades, since both require pixels to be touched, and is safe because the extractor already
-/// normalised every segment to identical codec parameters.
+/// normalized every segment to identical codec parameters.
 /// </para>
 /// </summary>
 public sealed class ConcatDemuxerStitcher : IStitcher

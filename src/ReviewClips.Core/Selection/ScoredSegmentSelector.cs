@@ -99,10 +99,10 @@ public sealed class ScoredSegmentSelector : SegmentSelectorBase
         var target = scoring.TargetMotionMultiple <= 0 ? 1d : scoring.TargetMotionMultiple;
 
         // Peaks at 1.0 when ratio == target, decaying smoothly either side.
-        var normalised = (ratio - target) / target;
-        var score = 1d / (1d + (normalised * normalised));
+        var normalized = (ratio - target) / target;
+        var score = 1d / (1d + (normalized * normalized));
 
-        // Penalise uneven windows: high variance usually means the window straddles a cut
+        // Penalize uneven windows: high variance usually means the window straddles a cut
         // or contains a flash, both of which look like glitches in a background loop.
         var stdDev = motion.StdDevOver(range);
         if (stdDev is not null && mean.Value > double.Epsilon)

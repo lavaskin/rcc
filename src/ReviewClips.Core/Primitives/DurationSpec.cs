@@ -84,7 +84,7 @@ public static partial class DurationSpec
         var match = UnitPattern.Match(input);
         if (!match.Success || (!match.Groups["h"].Success && !match.Groups["m"].Success && !match.Groups["s"].Success))
         {
-            error = $"'{text}' is not a recognised duration. Try 90s, 2m, 1m30s or 00:01:30.";
+            error = $"'{text}' is not a recognized duration. Try 90s, 2m, 1m30s or 00:01:30.";
             return false;
         }
 

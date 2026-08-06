@@ -29,13 +29,13 @@ public static class FilterStageOrder
     /// <summary>Retime before any frame-rate work, so <c>fps</c> sees the final timeline.</summary>
     public const int Speed = 200;
 
-    /// <summary>Square up anamorphic pixels before any aspect-ratio maths happens.</summary>
+    /// <summary>Square up anamorphic pixels before any aspect-ratio math happens.</summary>
     public const int SquarePixels = 300;
 
     /// <summary>Scale, crop or pad to the target frame.</summary>
     public const int Fit = 400;
 
-    /// <summary>Normalise to constant frame rate after geometry is settled.</summary>
+    /// <summary>Normalize to constant frame rate after geometry is settled.</summary>
     public const int FrameRate = 500;
 
     /// <summary>Ken Burns drift, operating at the final resolution.</summary>
@@ -43,7 +43,7 @@ public static class FilterStageOrder
 
     public const int Mirror = 700;
 
-    /// <summary>Color grade before creative adjustments so the LUT sees unmodified colour.</summary>
+    /// <summary>Color grade before creative adjustments so the LUT sees unmodified color.</summary>
     public const int Lut = 800;
 
     /// <summary>Brightness, contrast and saturation.</summary>

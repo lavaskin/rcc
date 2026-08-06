@@ -2,7 +2,7 @@ namespace ReviewClips.Core.Primitives;
 
 /// <summary>
 /// Every location rcc writes to outside the output directory: extracted segments, cached
-/// analysis, and burned-in text. Centralised so the ownership and permission rules on
+/// analysis, and burned-in text. Centralized so the ownership and permission rules on
 /// <see cref="Root"/> apply to all of them by construction.
 /// </summary>
 public static class ScratchPaths

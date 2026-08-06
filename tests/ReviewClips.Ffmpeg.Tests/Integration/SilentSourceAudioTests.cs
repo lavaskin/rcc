@@ -83,7 +83,7 @@ public class SilentSourceAudioTests
 
         (await _fixture.AudioStreamCountAsync(segment)).ShouldBe(1);
 
-        // And it is the right length, so it cannot desynchronise the join.
+        // And it is the right length, so it cannot desynchronize the join.
         (await _fixture.AudioDurationOfAsync(segment)).ShouldBe(2d, 0.25d);
     }
 

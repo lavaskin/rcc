@@ -84,7 +84,7 @@ rcc doctor
 rcc generate -i movie.mkv -d 90s --skip-head 0 --skip-tail 0 -o bg.mp4
 ```
 
-The first run against a source analyses it and caches the result. Later runs against the same file
+The first run against a source analyzes it and caches the result. Later runs against the same file
 skip that step.
 
 ---
@@ -231,7 +231,7 @@ $ rcc probe --chapters movie.mkv
 Matching is on titles only, never on position, so nothing is guessed. Two consequences follow:
 
 - A rip whose chapters are named `Chapter 01`, `Chapter 02`, ... carries no usable information.
-  Filtering degrades to a no-op and the `--skip-head` / `--skip-tail` trims remain the only defence.
+  Filtering degrades to a no-op and the `--skip-head` / `--skip-tail` trims remain the only defense.
   `probe --chapters` says so explicitly when this is the case.
 - A named chapter is caught wherever it sits, not only at the ends. An episode whose opening theme
   starts at 1:30 or whose next-episode preview sits before the credits is handled.
@@ -252,7 +252,7 @@ rcc generate -i ep01.mkv -d 90s --skip-chapter "cold open" --skip-chapter "sting
 rcc generate -i ep01.mkv -d 90s --chapters off --skip-chapter "ending*"
 ```
 
-`--skip-chapter` is honoured whether or not `--chapters off` is set, so `off` disables the built-in
+`--skip-chapter` is honored whether or not `--chapters off` is set, so `off` disables the built-in
 titles while leaving explicit patterns in force. A `--skip-chapter` that matches nothing produces a
 warning rather than silently doing nothing.
 
@@ -285,7 +285,7 @@ too busy. These values are approximate and benefit from per-title adjustment.
 
 Fit modes:
 
-- `crop` — scale to cover the frame, then centre-crop. Fills the frame, loses the edges.
+- `crop` — scale to cover the frame, then center-crop. Fills the frame, loses the edges.
 - `pad` — scale to fit, then letterbox. Keeps the whole image.
 - `blur-pad` — scale to fit over a blurred, zoomed copy of itself. Common for vertical output.
 - `stretch` — ignore aspect ratio.
@@ -305,7 +305,7 @@ Without it, HDR sources render washed out.
 | `--saturation <m>` | `0.80` | Saturation multiplier. |
 | `--contrast <m>` | `1.0` | Contrast multiplier. |
 | `--gamma <m>` | `1.0` | Gamma. Above 1 lifts the midtones, below 1 deepens them. |
-| `--grayscale` | off | Drops all colour. Equivalent to `--saturation 0`. |
+| `--grayscale` | off | Drops all color. Equivalent to `--saturation 0`. |
 | `--blur <sigma>` | `0` | Gaussian blur. |
 | `--sharpen <0-3>` | `0` | Unsharp mask. Helps a soft upscale. |
 | `--pixelate <1.1-16>` | off | Chunky downscale-and-upscale. |
@@ -336,10 +336,10 @@ the plan summary reports whichever one is actually applied.
 reserves the larger figure. At `--speed 2` a `5s` clip needs ten seconds of contiguous eligible
 footage, so a constrained source yields fewer clips than it would at normal speed and the
 shortfall is reported. This is what keeps a retimed clip from running past the end of its file,
-past a `--range` or `--exclude` boundary, or over its neighbour — and what makes the source-usage
+past a `--range` or `--exclude` boundary, or over its neighbor — and what makes the source-usage
 figures count the footage actually read.
 
-`--fade-edges` is not the same thing as `--transition`. A transition overlaps two neighbouring
+`--fade-edges` is not the same thing as `--transition`. A transition overlaps two neighboring
 clips and forces the filter-graph stitcher; `--fade-edges` applies within each clip during
 extraction, so it does not by itself prevent the stream-copy join (which needs `--transition none`
 together with both fades at `0`). It is applied at both ends of every clip, so it may be at most
@@ -355,7 +355,7 @@ rcc generate -i heat.mkv -d 90s \
 ```
 
 The line is drawn after every other look stage, so it is never blurred, grained, pixelated, or
-overlaid away. Note that an attribution is a courtesy and a signal of good faith, not a licence;
+overlaid away. Note that an attribution is a courtesy and a signal of good faith, not a license;
 see [LEGAL.md](LEGAL.md).
 
 ### Transitions
@@ -430,7 +430,7 @@ a track longer than the render is trimmed to it.
 
 The muxed track is always written as stereo. A mono source is therefore upmixed, and FFmpeg's
 upmix is energy-preserving: the same signal coming from two speakers instead of one is attenuated
-by 3 dB so it does not get louder in the process. That is the correct behaviour, but it does mean
+by 3 dB so it does not get louder in the process. That is the correct behavior, but it does mean
 a mono bed measures about 3 dB below where it started. `--audio-volume 1.4` restores it if the
 level matters.
 
@@ -534,7 +534,7 @@ surfaced without breaking the common case. `--strict-source-limit` opts into ref
 The three ways to lower the figure are `--max-clips`, a shorter `--duration`, and more sources —
 though more sources only helps if the render actually draws on them.
 
-Bounding source usage is also relevant to fair use, though a small proportion is not a safe harbour
+Bounding source usage is also relevant to fair use, though a small proportion is not a safe harbor
 and this is not legal advice; see [LEGAL.md](LEGAL.md).
 
 ---
@@ -653,7 +653,7 @@ output file is left behind.
 
 1. **Probe** — `ffprobe` reports duration, dimensions, frame rate, pixel aspect ratio, color
    transfer characteristics, and chapter markers for each source.
-2. **Analyse** — one FFmpeg pass, decimated to 4 fps and downscaled to 320px wide, produces scene
+2. **Analyze** — one FFmpeg pass, decimated to 4 fps and downscaled to 320px wide, produces scene
    cut timestamps, a per-frame motion curve, and the black and frozen ranges. Cached on disk.
 3. **Select** — clips are chosen by the active strategy from the eligible ranges, which exclude the
    head/tail trims, any `--exclude` ranges, chapters skipped by title, and detected black and
@@ -696,7 +696,7 @@ the output length matches the request.
 Using material you do not own carries constraints that are widely misunderstood. See
 **[LEGAL.md](LEGAL.md)** for the detail. In brief:
 
-- Clip length is not a safe harbour. US copyright law has no de minimis duration threshold, and
+- Clip length is not a safe harbor. US copyright law has no de minimis duration threshold, and
   amount is assessed in aggregate rather than per clip.
 - Muting, darkening, and blurring do not change copyright status.
 - Fair use for criticism is strongest when a clip illustrates a specific point. Decorative

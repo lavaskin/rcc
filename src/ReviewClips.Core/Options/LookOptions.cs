@@ -4,7 +4,7 @@ namespace ReviewClips.Core.Options;
 /// Visual treatment applied to every segment. The defaults deliberately push footage into the
 /// background rather than let it compete with narration and captions.
 /// <para>
-/// An aesthetic tool, not a legal one: obscuring footage does not create a licence, and using
+/// An aesthetic tool, not a legal one: obscuring footage does not create a license, and using
 /// it to evade automated matching carries its own risks. See the README's copyright section.
 /// </para>
 /// </summary>
@@ -28,7 +28,7 @@ public sealed record LookOptions
     /// <summary>1 = untouched. Above 1 lifts the midtones, below 1 deepens them.</summary>
     public double Gamma { get; init; } = 1d;
 
-    /// <summary>Drops all colour; equivalent to <see cref="Saturation"/> 0.</summary>
+    /// <summary>Drops all color; equivalent to <see cref="Saturation"/> 0.</summary>
     public bool Grayscale { get; init; }
 
     /// <summary>Gaussian blur sigma. 0 disables.</summary>
@@ -73,7 +73,7 @@ public sealed record LookOptions
     /// <summary>Playback rate multiplier. 1.0 disables. 0.5 is half speed.</summary>
     public double Speed { get; init; } = 1d;
 
-    /// <summary>Optional 3D LUT (.cube) applied for colour grading.</summary>
+    /// <summary>Optional 3D LUT (.cube) applied for color grading.</summary>
     public string? LutPath { get; init; }
 
     public bool HasZoom => Math.Abs(ZoomEnd - 1d) > 0.001d;

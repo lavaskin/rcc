@@ -54,7 +54,7 @@ public sealed record SegmentExtraction
     public required int Index { get; init; }
 }
 
-/// <summary>Cuts one segment out of a source and normalises it to the target format.</summary>
+/// <summary>Cuts one segment out of a source and normalizes it to the target format.</summary>
 public interface ISegmentExtractor
 {
     Task ExtractAsync(
@@ -112,7 +112,7 @@ public sealed record StitchRequest
     public bool UsesSegmentAudio => Audio.UsesSegmentAudio;
 }
 
-/// <summary>Joins normalised segments into the finished render.</summary>
+/// <summary>Joins normalized segments into the finished render.</summary>
 public interface IStitcher
 {
     bool CanHandle(StitchRequest request);

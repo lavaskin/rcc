@@ -18,13 +18,13 @@ public sealed class SharpenStage : IVideoFilterStage
     public void Emit(FilterGraphWriter writer, FilterContext context, string inputLabel, string outputLabel)
     {
         // 5x5 luma matrix, chroma left alone. Sharpening chroma on heavily compressed footage
-        // amplifies the blocking artefacts rather than the detail.
+        // amplifies the blocking artifacts rather than the detail.
         var amount = LookStage.Num(Math.Clamp(context.Look.Sharpen, 0d, 3d));
         writer.AddChain(inputLabel, outputLabel, $"unsharp=5:5:{amount}:5:5:0");
     }
 }
 
-/// <summary>Downscales and re-upscales with nearest-neighbour for a chunky, blocky look.</summary>
+/// <summary>Downscales and re-upscales with nearest-neighbor for a chunky, blocky look.</summary>
 public sealed class PixelateStage : IVideoFilterStage
 {
     public int Order => FilterStageOrder.Pixelate;
@@ -37,7 +37,7 @@ public sealed class PixelateStage : IVideoFilterStage
     {
         var factor = Math.Clamp(context.Look.Pixelate, 1.1d, 16d);
 
-        // Nearest-neighbour both ways: down so blocks average cleanly, up so they stay
+        // Nearest-neighbor both ways: down so blocks average cleanly, up so they stay
         // hard-edged instead of being smoothed back into a blur. Whole pixels rather than an
         // iw/N expression so the result is always even — an odd intermediate dimension makes the
         // yuv420p conversion at the end of the graph fail outright.
@@ -59,7 +59,7 @@ public sealed class PixelateStage : IVideoFilterStage
 /// <summary>
 /// Fades every clip in from and out to black.
 /// <para>
-/// Not <c>--transition</c>: that overlaps two neighbouring clips and forces the filter-graph
+/// Not <c>--transition</c>: that overlaps two neighboring clips and forces the filter-graph
 /// stitcher, whereas this happens inside each segment during extraction, so the finished render
 /// can still be joined by a stream copy.
 /// </para>
@@ -111,7 +111,7 @@ public sealed class AttributionStage : IVideoFilterStage
     public string Name => "attribution";
 
     /// <summary>
-    /// Requires both the text and a materialised file for it. The extractor owns writing the
+    /// Requires both the text and a materialized file for it. The extractor owns writing the
     /// file; without one the stage is skipped rather than falling back to inline text.
     /// </summary>
     public bool AppliesTo(FilterContext context) =>

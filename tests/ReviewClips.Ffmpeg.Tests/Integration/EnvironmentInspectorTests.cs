@@ -178,7 +178,7 @@ public class EnvironmentInspectorTests
     {
         // The directory comes from configuration, is used verbatim and nothing asks for
         // confirmation, so --clear-cache must not recursively delete what the user pointed at.
-        var directory = _fixture.PathFor("cache_with_neighbours");
+        var directory = _fixture.PathFor("cache_with_neighbors");
         Directory.CreateDirectory(directory);
 
         var entry = Path.Combine(directory, "film.abc123.json");

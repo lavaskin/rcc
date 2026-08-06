@@ -70,8 +70,8 @@ try
 }
 catch (OperationCanceledException)
 {
-    AnsiConsole.MarkupLine("[yellow]cancelled.[/]");
-    return ExitCodes.Cancelled;
+    AnsiConsole.MarkupLine("[yellow]canceled.[/]");
+    return ExitCodes.Canceled;
 }
 catch (CliUsageException ex)
 {

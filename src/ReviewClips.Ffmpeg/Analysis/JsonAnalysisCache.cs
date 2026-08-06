@@ -110,7 +110,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-            // Write to a temporary file then move, so a cancelled run cannot leave a
+            // Write to a temporary file then move, so a canceled run cannot leave a
             // half-written cache entry that would later fail to parse.
             var temp = path + ".tmp";
             await using (var stream = File.Create(temp))
@@ -180,7 +180,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
         public double DurationSeconds { get; init; }
 
         [JsonPropertyName("analysedAt")]
-        public long AnalysedAtUnix { get; init; }
+        public long AnalyzedAtUnix { get; init; }
 
         [JsonPropertyName("cuts")]
         public double[] SceneCuts { get; init; } = [];
@@ -209,7 +209,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
                 SourceSizeBytes = analysis.SourceSizeBytes,
                 SourceModifiedUnix = analysis.SourceModifiedUtc.ToUnixTimeSeconds(),
                 DurationSeconds = analysis.Duration.TotalSeconds,
-                AnalysedAtUnix = analysis.AnalysedAtUtc.ToUnixTimeSeconds(),
+                AnalyzedAtUnix = analysis.AnalyzedAtUtc.ToUnixTimeSeconds(),
                 SceneCuts = [.. analysis.SceneCuts.Select(c => Round(c.TotalSeconds))],
                 BlackRanges = Flatten(analysis.BlackRanges),
                 FreezeRanges = Flatten(analysis.FreezeRanges),
@@ -230,7 +230,7 @@ public sealed class JsonAnalysisCache : IAnalysisCache
             Motion = new MotionCurve(
                 MotionTimes.Zip(MotionValues, (t, v) => new MotionSample(t, v))),
             Settings = settings,
-            AnalysedAtUtc = DateTimeOffset.FromUnixTimeSeconds(AnalysedAtUnix),
+            AnalyzedAtUtc = DateTimeOffset.FromUnixTimeSeconds(AnalyzedAtUnix),
         };
 
         private static double Round(double value) => Math.Round(value, 3);

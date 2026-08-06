@@ -102,7 +102,7 @@ public class ScoredSelectorTests
     }
 
     [Fact]
-    public void ScoreWindow_PenalisesUnevenWindows()
+    public void ScoreWindow_PenalizesUnevenWindows()
     {
         var steady = Flat(1.25);
 

@@ -8,7 +8,7 @@ namespace ReviewClips.Core.Tests.Selection;
 /// <summary>
 /// Chapter title matching. Skipping a real chapter costs a few minutes of eligible footage,
 /// whereas failing to skip the credits puts a text crawl in the render, so the patterns lean
-/// towards skipping — but not so loosely that an ordinary content chapter is caught.
+/// toward skipping — but not so loosely that an ordinary content chapter is caught.
 /// </summary>
 public class ChapterFilterTests
 {
@@ -74,7 +74,7 @@ public class ChapterFilterTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
-    public void GenericTitles_AreRecognised(string? title) =>
+    public void GenericTitles_AreRecognized(string? title) =>
         ChapterFilter.IsGenericTitle(title).ShouldBeTrue();
 
     [Theory]

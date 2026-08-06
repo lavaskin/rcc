@@ -3,14 +3,14 @@ using System.Collections;
 namespace ReviewClips.Core.Primitives;
 
 /// <summary>
-/// An immutable, normalised (sorted, non-overlapping, merged) set of <see cref="TimeRange"/>.
+/// An immutable, normalized (sorted, non-overlapping, merged) set of <see cref="TimeRange"/>.
 /// Used to model "where in the film are we allowed to take footage from".
 /// </summary>
 public sealed class TimeRangeSet : IReadOnlyList<TimeRange>
 {
     private readonly List<TimeRange> _ranges;
 
-    private TimeRangeSet(List<TimeRange> normalised) => _ranges = normalised;
+    private TimeRangeSet(List<TimeRange> normalized) => _ranges = normalized;
 
     public static TimeRangeSet Empty { get; } = new([]);
 

@@ -53,7 +53,7 @@ public abstract class SegmentSelectorBase : ISegmentSelector
         var quotas = DistributeByWeight(context.SegmentCount, pools.Select(p => p.Eligible.TotalDuration.TotalSeconds).ToList());
         var picked = new List<SegmentCandidate>(context.SegmentCount);
 
-        // First pass: honour each pool's quota.
+        // First pass: honor each pool's quota.
         for (var i = 0; i < pools.Count; i++)
         {
             picked.AddRange(PickFrom(pools[i], quotas[i], context, window, picked));

@@ -209,13 +209,13 @@ internal sealed class GenerateOptions
 
     public Option<bool> Grayscale { get; } = new("--grayscale")
     {
-        Description = "Drop all colour. Equivalent to --saturation 0; passing --saturation "
+        Description = "Drop all color. Equivalent to --saturation 0; passing --saturation "
             + "explicitly overrides it.",
     };
 
     public Option<bool> NoGrayscale { get; } = new("--no-grayscale")
     {
-        Description = "Keep colour, overriding a profile that drops it.",
+        Description = "Keep color, overriding a profile that drops it.",
     };
 
     public Option<double?> Sharpen { get; } = new("--sharpen")
@@ -291,7 +291,7 @@ internal sealed class GenerateOptions
 
     public Option<string?> Lut { get; } = new("--lut")
     {
-        Description = "3D LUT (.cube) applied for colour grading.",
+        Description = "3D LUT (.cube) applied for color grading.",
         HelpName = "path",
     };
 

@@ -136,7 +136,7 @@ internal sealed class PipelineHarness
                 SourceSizeBytes = info.FileSizeBytes,
                 SourceModifiedUtc = info.LastModifiedUtc,
                 Duration = info.Duration,
-                AnalysedAtUtc = DateTimeOffset.UnixEpoch,
+                AnalyzedAtUtc = DateTimeOffset.UnixEpoch,
                 Settings = settings,
                 SceneCuts = [],
                 BlackRanges = [],

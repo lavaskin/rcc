@@ -101,7 +101,7 @@ public class AnalysisLogParserTests
 
 /// <summary>
 /// The metadata stream is read from stdout rather than a file because FFmpeg truncates
-/// <c>file=</c> targets whenever the filter graph reinitialises. These tests pin the behaviour
+/// <c>file=</c> targets whenever the filter graph reinitializes. These tests pin the behavior
 /// that made that bug visible: frame counters restart, so only <c>pts_time</c> can be trusted.
 /// </summary>
 public class MetadataStreamParserTests
@@ -129,7 +129,7 @@ public class MetadataStreamParserTests
     [Fact]
     public void UsesPtsTimeEvenWhenFrameCountersRestart()
     {
-        // This is exactly what a mid-stream filter reinitialisation looks like: the frame index
+        // This is exactly what a mid-stream filter reinitialization looks like: the frame index
         // resets to 0 while pts_time continues from where it left off.
         var parser = new MetadataStreamParser();
 
