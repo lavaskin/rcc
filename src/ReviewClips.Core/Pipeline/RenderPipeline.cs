@@ -251,7 +251,10 @@ public sealed class RenderPipeline
 
         observer.OnSegmentsSelected(segments.Count, requestedCount);
 
-        if (segments.Count < requestedCount && request.Selection.Strategy != SelectionStrategy.Cues)
+        var reportedShortCount = segments.Count < requestedCount
+            && request.Selection.Strategy != SelectionStrategy.Cues;
+
+        if (reportedShortCount)
         {
             var achieved = segments.Aggregate(TimeSpan.Zero, (a, s) => a + s.Duration);
             warnings.Add(
@@ -304,7 +307,18 @@ public sealed class RenderPipeline
             warnings.Add(usageMessage);
         }
 
-        // 8. Resolve the encoder.
+        // 8. Check the finished plan against what was actually asked for.
+        // Everything above plans towards the target rather than measuring against it, and each
+        // stage has its own way of falling short: a clip clamped at the end of its source, a cue
+        // list the runtime cannot be divided over, a cadence that could not be placed. Whatever
+        // the cause, a render that is not the length that was requested should say so rather than
+        // leave it to be discovered in the finished file.
+        if (DescribeDurationMiss(request, segments, reportedShortCount) is { } durationMessage)
+        {
+            warnings.Add(durationMessage);
+        }
+
+        // 9. Resolve the encoder.
         var encoder = await _encoderSelector.SelectAsync(request.Encoder, cancellationToken);
         if (request.Encoder.Preference == EncoderPreference.Auto && !encoder.IsHardware)
         {
@@ -613,6 +627,63 @@ public sealed class RenderPipeline
     private IStitcher ResolveStitcher(StitchRequest request) =>
         _stitchers.FirstOrDefault(s => s.CanHandle(request))
         ?? throw new RenderPlanningException("No stitcher can handle this request.");
+
+    /// <summary>
+    /// Reports a finished plan whose runtime is not the one that was requested, or null when it
+    /// lands close enough.
+    /// <para>
+    /// The tolerance is the larger of half a second and one per cent. Segments are cut to a whole
+    /// number of frames, so a plan is never expected to be exact to the tick; that residual is
+    /// around a frame either way and does not accumulate, which half a second clears comfortably.
+    /// The proportional term keeps the check meaningful on a long render, where a fixed allowance
+    /// would be noise.
+    /// </para>
+    /// <para>
+    /// Both directions are reported. An overshoot is the rarer and more surprising of the two —
+    /// nobody inspects a file for being too long — and it is the shape the transition arithmetic
+    /// fails in when it fails.
+    /// </para>
+    /// </summary>
+    /// <param name="alreadyReported">
+    /// Whether the count-based shortfall above has already spoken. It names the same problem in
+    /// terms of clips rather than seconds and offers the more actionable advice, so this defers
+    /// to it rather than saying it again in different units.
+    /// </param>
+    private static string? DescribeDurationMiss(
+        ClipRequest request,
+        IReadOnlyList<Selection.Segment> segments,
+        bool alreadyReported)
+    {
+        if (alreadyReported)
+        {
+            return null;
+        }
+
+        var rendered = SplicePlanner.RenderedDuration(
+            [.. segments.Select(s => s.Duration)],
+            request.Transition.IsEnabled ? request.Transition.Duration : TimeSpan.Zero);
+
+        var target = request.TargetDuration;
+        var difference = rendered - target;
+
+        var tolerance = TimeSpan.FromSeconds(Math.Max(0.5d, target.TotalSeconds * 0.01d));
+        if (difference.Duration() <= tolerance)
+        {
+            return null;
+        }
+
+        var direction = difference < TimeSpan.Zero ? "short of" : "longer than";
+
+        var advice = request.Selection.Strategy == SelectionStrategy.Cues
+            ? "Each cue takes an equal share of the runtime, so a cue too close to the end of its "
+                + "source is capped at what remains. Move it earlier, add cues, or shorten --duration."
+            : "Try a shorter --splice, a smaller --min-gap, or more sources.";
+
+        return $"This render comes out {rendered.TotalSeconds:0.#}s, "
+            + $"{difference.Duration().TotalSeconds:0.#}s {direction} the "
+            + $"{target.TotalSeconds:0.#}s requested. "
+            + advice;
+    }
 
     /// <summary>
     /// Explains an empty selection.

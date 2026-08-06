@@ -57,14 +57,9 @@ public static class ClipSequencer
 
             best = sequence;
 
-            var effective = SplicePlanner.EffectiveTransition(
-                sequence.Select(s => s.Duration).ToList(),
+            var error = outputTarget - SplicePlanner.RenderedDuration(
+                [.. sequence.Select(s => s.Duration)],
                 transition);
-
-            var predicted = sequence.Aggregate(TimeSpan.Zero, (a, s) => a + s.Duration)
-                - (effective * (sequence.Count - 1));
-
-            var error = outputTarget - predicted;
             if (Math.Abs(error.TotalSeconds) < 0.05d)
             {
                 break;

@@ -55,22 +55,10 @@ public sealed record RenderPlan
     /// reader would be checking the number for.
     /// </para>
     /// </summary>
-    public TimeSpan EffectiveDuration
-    {
-        get
-        {
-            if (!Request.Transition.IsEnabled || Segments.Count < 2)
-            {
-                return TotalDuration;
-            }
-
-            var effective = Planning.SplicePlanner.EffectiveTransition(
-                [.. Segments.Select(s => s.Duration)],
-                Request.Transition.Duration);
-
-            return TotalDuration - (effective * (Segments.Count - 1));
-        }
-    }
+    public TimeSpan EffectiveDuration =>
+        Planning.SplicePlanner.RenderedDuration(
+            [.. Segments.Select(s => s.Duration)],
+            Request.Transition.IsEnabled ? Request.Transition.Duration : TimeSpan.Zero);
 }
 
 public sealed record RenderResult

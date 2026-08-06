@@ -93,11 +93,7 @@ public static class SplicePlanner
 
             best = durations;
 
-            var effective = EffectiveTransition(durations, transition);
-            var predicted = durations.Aggregate(TimeSpan.Zero, (a, b) => a + b)
-                - (effective * (durations.Count - 1));
-
-            var error = outputTarget - predicted;
+            var error = outputTarget - RenderedDuration(durations, transition);
             if (Math.Abs(error.TotalSeconds) < 0.05d)
             {
                 break;
@@ -161,6 +157,27 @@ public static class SplicePlanner
         }
 
         return [.. Enumerable.Repeat(TimeSpan.FromSeconds(perClip), count)];
+    }
+
+    /// <summary>
+    /// Runtime of the finished render for these clip lengths, after cross-transition overlap.
+    /// <para>
+    /// The one place this arithmetic lives. <see cref="Pipeline.RenderPlan.EffectiveDuration"/>
+    /// reports it, <see cref="PlanForOutput"/> iterates against it, and the pipeline checks the
+    /// finished plan against the request with it — three readings that have to agree, since the
+    /// whole point of the check is to catch the case where the plan and the request do not.
+    /// </para>
+    /// </summary>
+    public static TimeSpan RenderedDuration(
+        IReadOnlyList<TimeSpan> durations,
+        TimeSpan transition)
+    {
+        ArgumentNullException.ThrowIfNull(durations);
+
+        var total = durations.Aggregate(TimeSpan.Zero, (a, b) => a + b);
+        var effective = EffectiveTransition(durations, transition);
+
+        return total - (effective * (durations.Count - 1));
     }
 
     /// <summary>
