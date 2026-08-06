@@ -56,6 +56,13 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// </summary>
     public string AudioTrack { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// A 6s MKV carrying three audio streams and no video, standing in for a track with
+    /// commentary or several language dubs. Exists so the stitchers' stream mapping can be shown
+    /// to take one stream rather than all of them.
+    /// </summary>
+    public string MultiTrackAudio { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         Directory = Path.Combine(Path.GetTempPath(), "rcc_tests_" + Guid.NewGuid().ToString("N")[..8]);
@@ -66,7 +73,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
             await new FfmpegToolset().EnsureAvailableAsync(CancellationToken.None);
             Available = true;
         }
-        catch (FfmpegNotFoundException)
+        catch (FfmpegNotFoundException) when (!Required)
         {
             Available = false;
             return;
@@ -103,6 +110,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
             ]);
 
         AudioTrack = await SynthesiseAudioAsync("track.wav", 6);
+        MultiTrackAudio = await SynthesiseMultiTrackAudioAsync("multitrack.mkv", 6, tracks: 3);
 
         var filters = await Runner.RunFfmpegAsync(
             ["-hide_banner", "-filters"],
@@ -116,7 +124,27 @@ public sealed class FfmpegFixture : IAsyncLifetime
         // fontconfig for a default family, which fails on an image that has libfreetype and no
         // fonts. Established once here so the caption tests can skip rather than fail.
         FontAvailable = _filters.Contains("drawtext") && await CanDrawTextAsync();
+
+        if (Required && !FontAvailable)
+        {
+            throw new InvalidOperationException(
+                "RCC_REQUIRE_FFMPEG is set, but drawtext cannot resolve a font, so the attribution "
+                + "tests would skip. Install a font package (fonts-dejavu-core).");
+        }
     }
+
+    /// <summary>
+    /// Whether a missing FFmpeg should fail the run rather than skip it.
+    /// <para>
+    /// Skipping is the right default: a contributor whose FFmpeg lacks libzimg should not be shown
+    /// a red suite for a feature they are not touching. It is the wrong behaviour in CI, where
+    /// FFmpeg is installed as an explicit step — there, a skip means that step silently stopped
+    /// working and roughly a fifth of the suite is no longer running. Nothing else notices, because
+    /// a skipped test reports green.
+    /// </para>
+    /// </summary>
+    private static bool Required =>
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RCC_REQUIRE_FFMPEG"));
 
     private HashSet<string> _filters = new(StringComparer.Ordinal);
 
@@ -322,8 +350,86 @@ public sealed class FfmpegFixture : IAsyncLifetime
         return path;
     }
 
-    /// <summary>Reports whether a file carries an audio stream, and at what duration.</summary>
-    public async Task<bool> HasAudioStreamAsync(string path)
+    /// <summary>
+    /// The duration of the first audio stream, as distinct from the container's.
+    /// <para>
+    /// Needed to tell a padded track from a truncated one: the container length only says how
+    /// long the file is, not whether audio is present throughout it.
+    /// </para>
+    /// </summary>
+    public async Task<double> AudioDurationOfAsync(string path)
+    {
+        var result = await Runner.RunFfprobeAsync(
+            [
+                "-v", "error",
+                "-select_streams", "a:0",
+                "-show_entries", "stream=duration",
+                "-of", "csv=p=0",
+                path,
+            ],
+            CancellationToken.None);
+
+        return double.TryParse(
+            result.StandardOutput.Trim(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var seconds)
+            ? seconds
+            : 0d;
+    }
+
+    /// <summary>
+    /// Synthesises an audio-only file carrying several distinct audio streams.
+    /// <para>
+    /// Each track gets its own frequency so they are genuinely separate streams rather than one
+    /// stream mapped repeatedly. Matroska rather than WAV because WAV cannot hold more than one.
+    /// </para>
+    /// </summary>
+    private async Task<string> SynthesiseMultiTrackAudioAsync(string name, double seconds, int tracks)
+    {
+        var path = Path.Combine(Directory, name);
+        var arguments = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
+
+        for (var i = 0; i < tracks; i++)
+        {
+            arguments.AddRange(
+            [
+                "-f", "lavfi",
+                "-i", $"sine=frequency={220 * (i + 1)}:sample_rate=44100",
+            ]);
+        }
+
+        for (var i = 0; i < tracks; i++)
+        {
+            arguments.AddRange(["-map", i.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":a"]);
+        }
+
+        arguments.AddRange(
+        [
+            "-t", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-c:a", "libopus",
+            path,
+        ]);
+
+        var result = await Runner.RunFfmpegAsync(arguments, CancellationToken.None);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException($"Could not synthesise {name}: {result.StandardError}");
+        }
+
+        return path;
+    }
+
+    /// <summary>
+    /// How many audio streams a file carries.
+    /// <para>
+    /// A count rather than a bool on purpose. "Has audio" cannot tell one stream from five, and
+    /// that is exactly the distinction a <c>-map N:a</c> that should have been <c>-map N:a:0</c>
+    /// turns on: the output plays correctly and quietly carries every commentary and language
+    /// track the input had.
+    /// </para>
+    /// </summary>
+    public async Task<int> AudioStreamCountAsync(string path)
     {
         var result = await Runner.RunFfprobeAsync(
             [
@@ -335,7 +441,9 @@ public sealed class FfmpegFixture : IAsyncLifetime
             ],
             CancellationToken.None);
 
-        return result.StandardOutput.Contains("audio", StringComparison.Ordinal);
+        return result.StandardOutput
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Count(line => line.Equals("audio", StringComparison.Ordinal));
     }
 
     /// <summary>

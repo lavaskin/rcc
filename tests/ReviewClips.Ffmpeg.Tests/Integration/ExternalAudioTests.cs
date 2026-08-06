@@ -129,7 +129,7 @@ public class ExternalAudioTests
             progress: null,
             TestContext.Current.CancellationToken);
 
-        (await _fixture.HasAudioStreamAsync(output)).ShouldBeTrue();
+        (await _fixture.AudioStreamCountAsync(output)).ShouldBe(1);
         (await _fixture.DurationOfAsync(output)).ShouldBe(6d, 0.3d);
     }
 
@@ -152,8 +152,12 @@ public class ExternalAudioTests
         arguments.ShouldContain("-c:v copy");
         arguments.ShouldNotContain("libx264");
         arguments.ShouldContain("-map 0:v");
-        arguments.ShouldContain("-map 1:a");
         arguments.ShouldContain("-shortest");
+
+        // ':a:0', not ':a'. The bare form matches every audio stream in the input, so a track
+        // with commentary or several languages would put all of them in the output.
+        arguments.ShouldContain("-map 1:a:0");
+        arguments.ShouldNotContain("-map 1:a ");
     }
 
     [Fact]
@@ -179,8 +183,10 @@ public class ExternalAudioTests
 
         await Concat().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
 
-        // 6s of video against 4s of remaining audio: -shortest ends it at 4s.
-        (await _fixture.DurationOfAsync(output)).ShouldBe(4d, 0.3d);
+        // 6s of video against 4s of remaining audio. The video is what was asked for, so it
+        // survives whole and apad fills the 2s shortfall with silence. Truncating to the audio
+        // instead would be silent data loss.
+        (await _fixture.DurationOfAsync(output)).ShouldBe(6d, 0.3d);
     }
 
     [Fact]
@@ -196,7 +202,85 @@ public class ExternalAudioTests
             progress: null,
             TestContext.Current.CancellationToken);
 
-        (await _fixture.HasAudioStreamAsync(output)).ShouldBeFalse();
+        (await _fixture.AudioStreamCountAsync(output)).ShouldBe(0);
+    }
+
+    // --- Length reconciliation ---------------------------------------------
+    //
+    // The render's length is what the user asked for. An external track is a decoration on it,
+    // so a track that runs out early must not shorten it: apad fills the gap with silence. These
+    // are the regression tests for that, one per stitcher, because the two arrive at it by
+    // completely different routes.
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AShortTrackIsPaddedRatherThanTruncatingTheVideo(bool useConcat)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        var label = useConcat ? "concat" : "graph";
+        var segments = await SegmentsAsync($"short_audio_{label}");
+        var output = _fixture.PathFor($"short_audio_{label}.mp4");
+
+        // 6s of video against 6s of track offset by 4s, so only 2s of audio remains. Before apad
+        // this produced a 2s file: two thirds of the requested render silently discarded.
+        var audio = AudioOptions.FromFile(_fixture.AudioTrack) with
+        {
+            Offset = TimeSpan.FromSeconds(4),
+        };
+
+        var request = Request(segments, output, useConcat ? TransitionKind.None : TransitionKind.Fade, audio);
+
+        if (useConcat)
+        {
+            await Concat().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
+        }
+        else
+        {
+            await Graph().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
+        }
+
+        // The concat path copies all 6s. The graph path overlaps three 0.4s crossfades, so 4.8s.
+        // Either way the figure is set by the video, never by the short track.
+        var expected = useConcat ? 6d : 4.8d;
+        (await _fixture.DurationOfAsync(output)).ShouldBe(expected, 0.4d);
+
+        // And the audio really is present for the whole of it, not just the first 2s.
+        (await _fixture.AudioStreamCountAsync(output)).ShouldBe(1);
+        (await _fixture.AudioDurationOfAsync(output)).ShouldBe(expected, 0.4d);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AMultiTrackFileContributesOneStream(bool useConcat)
+    {
+        Assert.SkipUnless(_fixture.Available, "FFmpeg is not installed.");
+
+        // The fixture file has three. '-map N:a' would take all three; '-map N:a:0' takes one.
+        (await _fixture.AudioStreamCountAsync(_fixture.MultiTrackAudio)).ShouldBe(3);
+
+        var label = useConcat ? "concat" : "graph";
+        var segments = await SegmentsAsync($"multi_audio_{label}");
+        var output = _fixture.PathFor($"multi_audio_{label}.mp4");
+
+        var request = Request(
+            segments,
+            output,
+            useConcat ? TransitionKind.None : TransitionKind.Fade,
+            AudioOptions.FromFile(_fixture.MultiTrackAudio));
+
+        if (useConcat)
+        {
+            await Concat().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
+        }
+        else
+        {
+            await Graph().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
+        }
+
+        (await _fixture.AudioStreamCountAsync(output)).ShouldBe(1);
     }
 
     // --- Filter graph path -------------------------------------------------
@@ -214,10 +298,11 @@ public class ExternalAudioTests
             progress: null,
             TestContext.Current.CancellationToken);
 
-        (await _fixture.HasAudioStreamAsync(output)).ShouldBeTrue();
+        (await _fixture.AudioStreamCountAsync(output)).ShouldBe(1);
 
-        // Four 1.5s clips joined by three 0.4s crossfades: 6 - 1.2 = 4.8s of video, which is
-        // shorter than the 6s track, so -shortest lands the file on the video.
+        // Four 1.5s clips joined by three 0.4s crossfades: 6 - 1.2 = 4.8s of video. apad makes
+        // the audio effectively endless, so -shortest always lands the file on the video and the
+        // 6s track is trimmed to fit rather than the other way round.
         (await _fixture.DurationOfAsync(output)).ShouldBe(4.8d, 0.4d);
     }
 
@@ -240,8 +325,10 @@ public class ExternalAudioTests
         arguments.ShouldNotContain("acrossfade");
         arguments.ShouldNotContain("[aout]");
 
-        // It is the last input, after all four segments.
-        arguments.ShouldContain("-map 4:a");
+        // It is the last input, after all four segments. ':a:0' so a multi-track file
+        // contributes one stream rather than all of them.
+        arguments.ShouldContain("-map 4:a:0");
+        arguments.ShouldNotContain("-map 4:a ");
     }
 
     [Fact]
@@ -299,7 +386,7 @@ public class ExternalAudioTests
 
         await Graph().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
 
-        (await _fixture.HasAudioStreamAsync(request.OutputPath)).ShouldBeTrue();
+        (await _fixture.AudioStreamCountAsync(request.OutputPath)).ShouldBe(1);
     }
 
     [Fact]
@@ -326,11 +413,14 @@ public class ExternalAudioTests
 
         // One -filter:a, not two. A second would silently replace the first.
         arguments.Split("-filter:a").Length.ShouldBe(2);
-        arguments.ShouldContain("volume=0.5,afade=t=in:st=0:d=0.5");
+
+        // Order is load-bearing: gain before the fade, and apad between them so the closing
+        // fade still has a stream to act on when the track is shorter than the render.
+        arguments.ShouldContain("volume=0.5,apad,afade=t=in:st=0:d=0.5");
 
         await Graph().StitchAsync(request, progress: null, TestContext.Current.CancellationToken);
 
-        (await _fixture.HasAudioStreamAsync(request.OutputPath)).ShouldBeTrue();
+        (await _fixture.AudioStreamCountAsync(request.OutputPath)).ShouldBe(1);
     }
 
     [Fact]
@@ -381,8 +471,8 @@ public class ExternalAudioTests
             progress: null,
             TestContext.Current.CancellationToken);
 
-        (await _fixture.HasAudioStreamAsync(concatOutput)).ShouldBeTrue();
-        (await _fixture.HasAudioStreamAsync(graphOutput)).ShouldBeTrue();
+        (await _fixture.AudioStreamCountAsync(concatOutput)).ShouldBe(1);
+        (await _fixture.AudioStreamCountAsync(graphOutput)).ShouldBe(1);
 
         var concatDuration = await _fixture.DurationOfAsync(concatOutput);
         var graphDuration = await _fixture.DurationOfAsync(graphOutput);

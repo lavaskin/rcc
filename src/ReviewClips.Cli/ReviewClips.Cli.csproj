@@ -22,4 +22,14 @@
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    The option surface and the request builder are internal, and should stay that way: nothing
+    outside this assembly has any business constructing them. But they hold the whole of the
+    input validation, which is exactly what most wants testing, so the test assembly is let in
+    rather than the types being widened for its benefit.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ReviewClips.Cli.Tests" />
+  </ItemGroup>
+
 </Project>
