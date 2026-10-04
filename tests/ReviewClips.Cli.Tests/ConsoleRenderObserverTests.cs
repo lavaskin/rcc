@@ -23,6 +23,10 @@ public class ConsoleRenderObserverTests
             ColorSystem = interactive ? ColorSystemSupport.Standard : ColorSystemSupport.NoColors,
             Interactive = interactive ? InteractionSupport.Yes : InteractionSupport.No,
             Out = new AnsiConsoleOutput(output),
+
+            // Spectre's CI enrichers override the settings above: on GitHub Actions they force
+            // Ansi on and Interactive off, turning each case here into the other.
+            Enrichment = new ProfileEnrichment { UseDefaultEnrichers = false },
         });
 
         console.Profile.Width = 100;
