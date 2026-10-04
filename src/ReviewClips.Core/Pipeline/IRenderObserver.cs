@@ -26,7 +26,12 @@ public interface IRenderObserver
 
     void OnSegmentsSelected(int count, int requested);
 
-    void OnSegmentCompleted(int completed, int total);
+    /// <summary>
+    /// Clip encoding progress: <paramref name="completed"/> of <paramref name="total"/> clips
+    /// finished, and <paramref name="fraction"/> of the encoding work done, weighted by clip
+    /// length. Reported once at the start, then as encoders advance; never goes backwards.
+    /// </summary>
+    void OnExtractionProgress(int completed, int total, double fraction);
 
     void OnStitchProgress(double fraction);
 
@@ -57,7 +62,7 @@ public sealed class NullRenderObserver : IRenderObserver
     {
     }
 
-    public void OnSegmentCompleted(int completed, int total)
+    public void OnExtractionProgress(int completed, int total, double fraction)
     {
     }
 

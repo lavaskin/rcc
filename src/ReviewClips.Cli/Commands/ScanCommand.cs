@@ -76,7 +76,7 @@ internal sealed class ScanCommand
 
         var force = parse.GetValue(_force);
         var sources = resolver.Resolve(parse.GetValue(_inputs) ?? []);
-        var observer = new ConsoleRenderObserver(console);
+        using var observer = new ConsoleRenderObserver(console);
 
         var table = new Table()
             .Border(TableBorder.Rounded)

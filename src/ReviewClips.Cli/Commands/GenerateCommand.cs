@@ -38,7 +38,7 @@ internal sealed class GenerateCommand
 
         var request = builder.Build(parse);
         var pipeline = services.GetRequiredService<RenderPipeline>();
-        var observer = new ConsoleRenderObserver(console);
+        using var observer = new ConsoleRenderObserver(console);
 
         var plan = await pipeline.PlanAsync(request, observer, cancellationToken);
 

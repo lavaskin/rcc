@@ -84,7 +84,7 @@ internal sealed class BatchCommand
 
             // Planned before the name is chosen, as in `generate`: the derived stem states the
             // target duration, which --match-audio settles during planning.
-            var observer = new ConsoleRenderObserver(console);
+            using var observer = new ConsoleRenderObserver(console);
             var plan = await pipeline.PlanAsync(variant, observer, cancellationToken);
 
             var stem = fixedStem

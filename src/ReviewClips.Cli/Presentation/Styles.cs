@@ -24,6 +24,12 @@ internal static class Styles
     /// <summary>Style for table borders and rules.</summary>
     public static Style Border { get; } = new(decoration: Decoration.Dim);
 
+    /// <summary>
+    /// The unfilled part of a progress bar. Spectre draws it in palette index 8, the same
+    /// near-invisible grey as <c>[grey]</c>.
+    /// </summary>
+    public static Style ProgressTrack { get; } = new(decoration: Decoration.Dim);
+
     /// <summary>Wraps already-escaped markup so it renders de-emphasized.</summary>
     public static string Faint(string markup) => $"[{Muted}]{markup}[/]";
 

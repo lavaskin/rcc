@@ -372,7 +372,11 @@ public sealed class RenderPipeline
                     ? $"{plan.Segments.Count} clip(s)"
                     : $"{extractionQueue.Count} unique clip(s) filling {plan.Segments.Count} slot(s)");
 
-            var completed = 0;
+            var progress = new WeightedProgress(
+                [.. extractionQueue.Select(q => q.Segment.Duration)],
+                (completed, fraction) => observer.OnExtractionProgress(completed, extractionQueue.Count, fraction));
+
+            observer.OnExtractionProgress(0, extractionQueue.Count, 0d);
 
             var parallelism = Math.Max(1, request.Parallelism);
             if (plan.Encoder.IsHardware)
@@ -381,7 +385,7 @@ public sealed class RenderPipeline
             }
 
             await Parallel.ForEachAsync(
-                extractionQueue,
+                extractionQueue.Select((item, index) => (item.Segment, item.Path, Index: index)),
                 new ParallelOptions
                 {
                     MaxDegreeOfParallelism = parallelism,
@@ -401,12 +405,10 @@ public sealed class RenderPipeline
                             EncoderOptions = request.Encoder,
                             Mute = !request.Audio.UsesSegmentAudio,
                         },
-                        progress: null,
+                        progress.For(item.Index),
                         ct);
 
-                    observer.OnSegmentCompleted(
-                        Interlocked.Increment(ref completed),
-                        extractionQueue.Count);
+                    progress.Complete(item.Index);
                 });
 
             // Expand back to one path per slot, repeating shared clips.

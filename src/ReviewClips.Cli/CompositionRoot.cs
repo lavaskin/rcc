@@ -47,6 +47,14 @@ internal static class CompositionRoot
             builder.SetMinimumLevel(verbose ? LogLevel.Debug : LogLevel.Warning);
         });
 
+        // The logger writes straight to stdout from its own thread, which tears a live progress
+        // display mid-frame. Verbose output is a log stream anyway, so its bars degrade to the
+        // occasional plain line that Spectre prints on a non-interactive console.
+        if (verbose)
+        {
+            AnsiConsole.Console.Profile.Capabilities.Interactive = false;
+        }
+
         services.AddSingleton(AnsiConsole.Console);
 
         // FFmpeg locations are overridable for non-standard installs.
