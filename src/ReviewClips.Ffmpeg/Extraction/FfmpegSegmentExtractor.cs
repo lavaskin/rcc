@@ -148,6 +148,15 @@ public sealed class FfmpegSegmentExtractor : ISegmentExtractor
         arguments.AddRange(["-c:v", request.Encoder.VideoEncoder]);
         arguments.AddRange(request.Encoder.QualityArguments);
         arguments.AddRange(request.Encoder.ExtraArguments);
+
+        // The concat demuxer's outpoint drops packets by decode timestamp. With B-frames that
+        // runs two or three frames past the cut and overlaps the next clip; without them decode
+        // and display order coincide and the cut is exact. Only the one encode a slot trims pays.
+        if (request.Trimmed)
+        {
+            arguments.AddRange(["-bf", "0"]);
+        }
+
         arguments.AddRange(["-pix_fmt", request.Encoder.PixelFormat]);
 
         // Force constant frame rate. Variable timestamps survive the fps filter in some

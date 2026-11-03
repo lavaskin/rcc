@@ -266,6 +266,48 @@ public class SegmentLengthTests
         arguments[t + 1].ShouldBe(expected);
     }
 
+    /// <summary>
+    /// The stream-copy stitcher cuts a trimmed slot with the concat demuxer's outpoint, which
+    /// goes by decode timestamp; only an encode with no reordered frames cuts exactly.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ATrimmedEncodeIsWrittenWithoutBFrames(bool trimmed, bool expectsNoBFrames)
+    {
+        var extractor = new FfmpegSegmentExtractor(
+            _fixture.Runner,
+            VideoFilterGraphBuilder.CreateDefault(),
+            NullLogger<FfmpegSegmentExtractor>.Instance);
+
+        var arguments = extractor.DescribeArguments(new SegmentExtractionRequest
+        {
+            Segment = new Segment
+            {
+                SourcePath = "/movies/film.mkv",
+                Start = TimeSpan.FromSeconds(10),
+                Duration = TimeSpan.FromSeconds(4),
+            },
+            Source = SyntheticInfo("/movies/film.mkv"),
+            OutputPath = "/tmp/out.mp4",
+            Format = SmallFormat,
+            Look = LookOptions.None,
+            Encoder = new EncoderProfile
+            {
+                VideoEncoder = "libx264",
+                IsHardware = false,
+                QualityArguments = [],
+                ExtraArguments = [],
+            },
+            EncoderOptions = new EncoderOptions { Preference = EncoderPreference.X264 },
+            Mute = true,
+            Trimmed = trimmed,
+        }).ToList();
+
+        var bf = arguments.IndexOf("-bf");
+        (bf >= 0 && arguments[bf + 1] == "0").ShouldBe(expectsNoBFrames);
+    }
+
     [Fact]
     public async Task KeepingTheSourceAudioDoesNotChangeTheFrameCount()
     {

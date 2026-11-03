@@ -89,6 +89,14 @@ public sealed record LookOptions
     public bool HasAttribution => !string.IsNullOrWhiteSpace(Attribution);
 
     /// <summary>
+    /// True when a clip's pictures depend on how long it is, not only on where it starts: the
+    /// edge fade-out is placed at the clip's end and the zoom is paced to finish on its last
+    /// frame. A shorter clip is then not the opening of a longer one, so the two cannot share
+    /// an encode.
+    /// </summary>
+    public bool VariesWithClipLength => HasFadeEdges || HasZoom;
+
+    /// <summary>
     /// Saturation as the filter graph applies it: <see cref="Grayscale"/> wins over
     /// <see cref="Saturation"/>, being the more specific request.
     /// <para>

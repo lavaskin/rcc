@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using ReviewClips.Core.Pipeline;
+using ReviewClips.Ffmpeg.Extraction;
 using ReviewClips.Ffmpeg.Process;
 
 namespace ReviewClips.Ffmpeg.Stitching;
@@ -140,19 +141,58 @@ public sealed class ConcatDemuxerStitcher : IStitcher
     private string WriteListFile(StitchRequest request)
     {
         var listPath = Path.Combine(request.WorkingDirectory, "segments.txt");
-        var builder = new StringBuilder();
 
-        foreach (var path in request.SegmentPaths)
-        {
-            // The demuxer's own quoting rules: wrap in single quotes and escape any
-            // single quote by closing, inserting an escaped quote, and reopening.
-            var escaped = path.Replace("'", @"'\''", StringComparison.Ordinal);
-            builder.Append("file '").Append(escaped).Append('\'').Append('\n');
-        }
-
-        File.WriteAllText(listPath, builder.ToString());
+        File.WriteAllText(listPath, BuildList(request));
         _logger.LogDebug("Wrote concat list {Path}", listPath);
 
         return listPath;
     }
+
+    internal static string BuildList(StitchRequest request)
+    {
+        var builder = new StringBuilder();
+
+        for (var i = 0; i < request.SegmentPaths.Count; i++)
+        {
+            // The demuxer's own quoting rules: wrap in single quotes and escape any
+            // single quote by closing, inserting an escaped quote, and reopening.
+            var escaped = request.SegmentPaths[i].Replace("'", @"'\''", StringComparison.Ordinal);
+            builder.Append("file '").Append(escaped).Append('\'').Append('\n');
+
+            if (request.IsTrimmed(i))
+            {
+                AppendTrim(builder, request.SegmentDurations[i], request.Format.FrameRate);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Plays only the opening of a file. The extractor wrote a trimmed encode without B-frames,
+    /// so each packet's decode timestamp is its display timestamp and outpoint lands on a frame.
+    /// <para>
+    /// outpoint sits half a frame before the first frame to drop, so timestamp rounding at
+    /// rates like 23.976 cannot let that frame through. duration states the exact frame-aligned
+    /// length separately, because the demuxer offsets the next file by it and would otherwise
+    /// take outpoint's half-frame-early figure.
+    /// </para>
+    /// </summary>
+    private static void AppendTrim(StringBuilder builder, TimeSpan slot, double frameRate)
+    {
+        var frames = FfmpegSegmentExtractor.FrameCount(slot, frameRate);
+
+        if (frames == 0)
+        {
+            builder.Append("outpoint ").Append(Precise(slot.TotalSeconds)).Append('\n');
+            return;
+        }
+
+        builder.Append("outpoint ").Append(Precise((frames - 0.5d) / frameRate)).Append('\n');
+        builder.Append("duration ").Append(Precise(frames / frameRate)).Append('\n');
+    }
+
+    /// <summary>Microsecond precision, the resolution the demuxer parses durations at.</summary>
+    private static string Precise(double seconds) =>
+        seconds.ToString("0.######", CultureInfo.InvariantCulture);
 }

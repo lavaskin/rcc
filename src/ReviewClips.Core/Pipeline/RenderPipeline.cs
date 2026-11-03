@@ -344,39 +344,18 @@ public sealed class RenderPipeline
         {
             var infoByPath = plan.Sources.ToDictionary(s => s.Path, s => s.Info, StringComparer.Ordinal);
 
-            // Extract.
-            var extension = Path.GetExtension(request.OutputPath) is { Length: > 1 } ext ? ext : ".mp4";
+            // Extract. Each distinct clip is encoded once and referenced by every slot it fills,
+            // which matters when --max-clips repeats a small pool.
+            var extraction = CreateExtractionPlan(plan, workDir);
+            var jobs = extraction.Jobs;
 
-            // Identical clips are encoded once and referenced many times, which matters when
-            // --max-clips repeats a small pool: one encode per distinct clip, not per slot, and
-            // every repeat is bit-identical.
-            var uniqueClips = new Dictionary<ClipKey, string>();
-            var extractionQueue = new List<(Segment Segment, string Path)>();
-
-            foreach (var segment in plan.Segments)
-            {
-                var key = ClipKey.For(segment);
-                if (uniqueClips.ContainsKey(key))
-                {
-                    continue;
-                }
-
-                var target = Path.Combine(workDir, $"seg_{uniqueClips.Count:D5}{extension}");
-                uniqueClips[key] = target;
-                extractionQueue.Add((segment, target));
-            }
-
-            observer.OnPhaseStarted(
-                RenderPhase.Extracting,
-                extractionQueue.Count == plan.Segments.Count
-                    ? $"{plan.Segments.Count} clip(s)"
-                    : $"{extractionQueue.Count} unique clip(s) filling {plan.Segments.Count} slot(s)");
+            observer.OnPhaseStarted(RenderPhase.Extracting, DescribeExtraction(plan, jobs.Count));
 
             var progress = new WeightedProgress(
-                [.. extractionQueue.Select(q => q.Segment.Duration)],
-                (completed, fraction) => observer.OnExtractionProgress(completed, extractionQueue.Count, fraction));
+                [.. jobs.Select(j => j.Segment.Duration)],
+                (completed, fraction) => observer.OnExtractionProgress(completed, jobs.Count, fraction));
 
-            observer.OnExtractionProgress(0, extractionQueue.Count, 0d);
+            observer.OnExtractionProgress(0, jobs.Count, 0d);
 
             var parallelism = Math.Max(1, request.Parallelism);
             if (plan.Encoder.IsHardware)
@@ -385,7 +364,7 @@ public sealed class RenderPipeline
             }
 
             await Parallel.ForEachAsync(
-                extractionQueue.Select((item, index) => (item.Segment, item.Path, Index: index)),
+                jobs.Select((job, index) => (Job: job, Index: index)),
                 new ParallelOptions
                 {
                     MaxDegreeOfParallelism = parallelism,
@@ -394,41 +373,17 @@ public sealed class RenderPipeline
                 async (item, ct) =>
                 {
                     await _extractor.ExtractAsync(
-                        new SegmentExtractionRequest
-                        {
-                            Segment = item.Segment,
-                            Source = infoByPath[item.Segment.SourcePath],
-                            OutputPath = item.Path,
-                            Format = request.Format,
-                            Look = request.Look,
-                            Encoder = plan.Encoder,
-                            EncoderOptions = request.Encoder,
-                            Mute = !request.Audio.UsesSegmentAudio,
-                        },
+                        BuildExtractionRequest(plan, item.Job, infoByPath),
                         progress.For(item.Index),
                         ct);
 
                     progress.Complete(item.Index);
                 });
 
-            // Expand back to one path per slot, repeating shared clips.
-            var segmentPaths = plan.Segments.Select(s => uniqueClips[ClipKey.For(s)]).ToArray();
-
             // Stitch.
             observer.OnPhaseStarted(RenderPhase.Stitching, request.Transition.Kind.ToString());
 
-            var stitchRequest = new StitchRequest
-            {
-                SegmentPaths = segmentPaths,
-                SegmentDurations = plan.Segments.Select(s => s.Duration).ToList(),
-                OutputPath = request.OutputPath,
-                Transition = request.Transition,
-                Format = request.Format,
-                Encoder = plan.Encoder,
-                EncoderOptions = request.Encoder,
-                Audio = request.Audio,
-                WorkingDirectory = workDir,
-            };
+            var stitchRequest = BuildStitchRequest(plan, extraction, workDir);
 
             var stitcher = ResolveStitcher(stitchRequest);
             EnsureOutputDirectory(request.OutputPath);
@@ -468,57 +423,77 @@ public sealed class RenderPipeline
         var infoByPath = plan.Sources.ToDictionary(s => s.Path, s => s.Info, StringComparer.Ordinal);
         // Illustrative only: nothing is written here, so it is not created.
         var workDir = Path.Combine(Primitives.ScratchPaths.Work, "dry-run");
-        var extension = Path.GetExtension(request.OutputPath) is { Length: > 1 } ext ? ext : ".mp4";
 
-        var lines = new List<string>();
-        var segmentPaths = new List<string>();
+        // The same extraction plan the executed path builds, so the commands cannot drift.
+        var extraction = CreateExtractionPlan(plan, workDir);
 
-        // Mirror the executed path: identical clips share one encode.
-        var uniqueClips = new Dictionary<ClipKey, string>();
+        var lines = extraction.Jobs
+            .Select(job => BuildExtractionRequest(plan, job, infoByPath))
+            .Select(extract => "ffmpeg " + Quote(_extractor.DescribeArguments(extract)))
+            .ToList();
 
-        foreach (var segment in plan.Segments)
-        {
-            var key = ClipKey.For(segment);
-
-            if (!uniqueClips.TryGetValue(key, out var target))
-            {
-                target = Path.Combine(workDir, $"seg_{uniqueClips.Count:D5}{extension}");
-                uniqueClips[key] = target;
-
-                var args = _extractor.DescribeArguments(new SegmentExtractionRequest
-                {
-                    Segment = segment,
-                    Source = infoByPath[segment.SourcePath],
-                    OutputPath = target,
-                    Format = request.Format,
-                    Look = request.Look,
-                    Encoder = plan.Encoder,
-                    EncoderOptions = request.Encoder,
-                    Mute = !request.Audio.UsesSegmentAudio,
-                });
-
-                lines.Add("ffmpeg " + Quote(args));
-            }
-
-            segmentPaths.Add(target);
-        }
-
-        var stitchRequest = new StitchRequest
-        {
-            SegmentPaths = segmentPaths,
-            SegmentDurations = plan.Segments.Select(s => s.Duration).ToList(),
-            OutputPath = request.OutputPath,
-            Transition = request.Transition,
-            Format = request.Format,
-            Encoder = plan.Encoder,
-            EncoderOptions = request.Encoder,
-            Audio = request.Audio,
-            WorkingDirectory = workDir,
-        };
+        var stitchRequest = BuildStitchRequest(plan, extraction, workDir);
 
         lines.Add("ffmpeg " + Quote(ResolveStitcher(stitchRequest).DescribeArguments(stitchRequest)));
         return lines;
     }
+
+    private static ExtractionPlan CreateExtractionPlan(RenderPlan plan, string workDir)
+    {
+        var outputPath = plan.Request.OutputPath;
+        var extension = Path.GetExtension(outputPath) is { Length: > 1 } ext ? ext : ".mp4";
+
+        return ExtractionPlan.Create(plan.Segments, plan.Request.Look, workDir, extension);
+    }
+
+    /// <summary>
+    /// Names the clips and encodes the way the plan summary counts them. Encodes outnumber clips
+    /// only when the look varies with clip length, so the two figures are given separately.
+    /// </summary>
+    private static string DescribeExtraction(RenderPlan plan, int encodes)
+    {
+        var slots = plan.Segments.Count;
+        var distinct = plan.DistinctClipCount;
+
+        if (encodes == slots && distinct == slots)
+        {
+            return $"{slots} clip(s)";
+        }
+
+        return encodes == distinct
+            ? $"{distinct} unique clip(s) filling {slots} slot(s)"
+            : $"{distinct} unique clip(s) in {encodes} encode(s) filling {slots} slot(s)";
+    }
+
+    private static SegmentExtractionRequest BuildExtractionRequest(
+        RenderPlan plan,
+        ExtractionJob job,
+        Dictionary<string, Media.MediaInfo> infoByPath) => new()
+        {
+            Segment = job.Segment,
+            Source = infoByPath[job.Segment.SourcePath],
+            OutputPath = job.OutputPath,
+            Format = plan.Request.Format,
+            Look = plan.Request.Look,
+            Encoder = plan.Encoder,
+            EncoderOptions = plan.Request.Encoder,
+            Mute = !plan.Request.Audio.UsesSegmentAudio,
+            Trimmed = job.Trimmed,
+        };
+
+    private static StitchRequest BuildStitchRequest(RenderPlan plan, ExtractionPlan extraction, string workDir) => new()
+    {
+        SegmentPaths = extraction.SlotPaths,
+        SegmentDurations = plan.Segments.Select(s => s.Duration).ToList(),
+        EncodedDurations = extraction.EncodedDurations,
+        OutputPath = plan.Request.OutputPath,
+        Transition = plan.Request.Transition,
+        Format = plan.Request.Format,
+        Encoder = plan.Encoder,
+        EncoderOptions = plan.Request.Encoder,
+        Audio = plan.Request.Audio,
+        WorkingDirectory = workDir,
+    };
 
     /// <summary>
     /// The external track's usable length, or null when it could not be measured. The
@@ -758,15 +733,6 @@ public sealed class RenderPipeline
             a.Length == 0 || a.Any(char.IsWhiteSpace) || a.Contains('\'', StringComparison.Ordinal)
                 ? "\"" + a.Replace("\"", "\\\"", StringComparison.Ordinal) + "\""
                 : a));
-}
-
-/// <summary>
-/// Identity of a clip for de-duplication: the same source and timing yields the same encode.
-/// </summary>
-internal readonly record struct ClipKey(string SourcePath, long StartTicks, long DurationTicks)
-{
-    public static ClipKey For(Selection.Segment segment) =>
-        new(segment.SourcePath, segment.Start.Ticks, segment.Duration.Ticks);
 }
 
 public sealed class RenderPlanningException : Exception

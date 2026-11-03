@@ -252,6 +252,110 @@ public class StitchPlanTests
 
         graph.ShouldContain("offset=4.85");
     }
+
+    // --- Trimmed slots -----------------------------------------------------
+
+    [Fact]
+    public void Graph_TrimsASlotShorterThanItsFileByFrameCount()
+    {
+        // 2.5s at 30fps is 75 frames, the same count the extractor would have capped it at.
+        var request = Request([5, 5, 2.5], audio: AudioOptions.FromSource()) with
+        {
+            EncodedDurations = [.. new[] { 5d, 5, 5 }.Select(TimeSpan.FromSeconds)],
+        };
+
+        var graph = StitchPlan.Create(request).BuildGraph(includeAudio: true);
+
+        graph.ShouldContain("[2:v]trim=end_frame=75,setpts=PTS-STARTPTS[t2]");
+        graph.ShouldContain("[x1][t2]xfade=");
+        graph.ShouldContain("[2:a]atrim=duration=2.5,asetpts=PTS-STARTPTS[ta2]");
+        graph.ShouldContain("[xa1][ta2]acrossfade=");
+    }
+
+    [Fact]
+    public void Graph_LeavesWholeSlotsUntrimmed()
+    {
+        var request = Request([5, 2.5, 5], TransitionKind.None, fadeIn: 0.5) with
+        {
+            EncodedDurations = [.. new[] { 5d, 5, 5 }.Select(TimeSpan.FromSeconds)],
+        };
+
+        var graph = StitchPlan.Create(request).BuildGraph(includeAudio: false);
+
+        graph.ShouldNotContain("[0:v]trim");
+        graph.ShouldNotContain("[2:v]trim");
+        graph.ShouldContain("[0:v][t1][2:v]concat=n=3");
+    }
+
+    [Fact]
+    public void Graph_HasNoTrimsWithoutEncodedDurations()
+    {
+        var graph = StitchPlan.Create(Request([5, 2.5], audio: AudioOptions.FromSource()))
+            .BuildGraph(includeAudio: true);
+
+        graph.ShouldNotContain("trim=");
+    }
+
+    [Fact]
+    public void Graph_TrimsTheOnlySlotOfASingleClipRender()
+    {
+        var request = Request([2.5]) with { EncodedDurations = [TimeSpan.FromSeconds(5)] };
+
+        StitchPlan.Create(request).BuildGraph(includeAudio: false)
+            .ShouldContain("[t0]null[j0]");
+    }
+}
+
+public class ConcatListTests
+{
+    private static StitchRequest Request(double[] slots, double[]? encoded, double fps = 30) => new()
+    {
+        SegmentPaths = slots.Select((_, i) => $"/tmp/seg{i}.mp4").ToList(),
+        SegmentDurations = slots.Select(TimeSpan.FromSeconds).ToList(),
+        EncodedDurations = encoded?.Select(TimeSpan.FromSeconds).ToList(),
+        OutputPath = "/tmp/out.mp4",
+        Transition = TransitionOptions.None with { FadeIn = TimeSpan.Zero, FadeOut = TimeSpan.Zero },
+        Format = OutputFormat.Youtube with { FrameRate = fps },
+        Encoder = new EncoderProfile
+        {
+            VideoEncoder = "libx264",
+            IsHardware = false,
+            QualityArguments = [],
+            ExtraArguments = [],
+        },
+        EncoderOptions = new EncoderOptions(),
+        Audio = AudioOptions.Muted,
+        WorkingDirectory = "/tmp/work",
+    };
+
+    [Fact]
+    public void ListsEachSlotOnce_WhenNothingIsTrimmed() =>
+        ConcatDemuxerStitcher.BuildList(Request([5, 5], encoded: null))
+            .ShouldBe("file '/tmp/seg0.mp4'\nfile '/tmp/seg1.mp4'\n");
+
+    [Fact]
+    public void CutsATrimmedSlotHalfAFrameBeforeTheFirstFrameItDrops()
+    {
+        // 2.5s at 30fps is 75 frames. outpoint lands between frames 74 and 75 so tick rounding
+        // cannot let frame 75 through; duration states the exact length the next file follows.
+        var list = ConcatDemuxerStitcher.BuildList(Request([5, 2.5], encoded: [5, 5]));
+
+        list.ShouldBe(
+            "file '/tmp/seg0.mp4'\n"
+            + "file '/tmp/seg1.mp4'\n"
+            + "outpoint 2.483333\n"
+            + "duration 2.5\n");
+    }
+
+    [Fact]
+    public void StatesAFrameAlignedDurationAtAwkwardRates()
+    {
+        // 2.2s at 23.976fps rounds to 53 frames, which is 2.210544s rather than 2.2s.
+        var list = ConcatDemuxerStitcher.BuildList(Request([2.2], encoded: [5], fps: 23.976));
+
+        list.ShouldContain("outpoint 2.18969\n");
+        list.ShouldContain("duration 2.210544\n");
+    }
 }
 
 public class StitcherSelectionTests

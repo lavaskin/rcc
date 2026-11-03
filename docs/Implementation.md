@@ -69,6 +69,19 @@ differently but no less, since it schedules `xfade` offsets from the *planned* l
 caps each segment at `round(duration * fps)`, which is always fewer frames than the read window
 supplies, so nothing is ever short.
 
+**A repeated clip is encoded once at its longest and trimmed per slot.** `ClipSequencer` lands on
+the runtime by resizing the final slot, so under `--max-clips` one moment can fill slots of two
+lengths. Encodes are keyed by source and start, the same identity `CountDistinct` uses, so N clips
+cost N encodes; a shorter slot plays the opening of the file. The filter-graph stitcher trims with
+`trim=end_frame`, and the concat stitcher with an `outpoint` in its list. `outpoint` drops packets
+by *decode* timestamp, so with B-frames it runs two or three frames past the cut and overlaps the
+next clip. This was measured on x264, x265 and both NVENC codecs. The trimmed encode is therefore
+written with `-bf 0`, the one encode per render that needs it, and the cut is then frame-exact. The
+`outpoint` sits half a frame early, so tick rounding at 23.976 cannot let the next frame through,
+and a separate `duration` directive gives the demuxer the exact length to offset the next file by.
+A look that varies with clip length (`--fade-edges`, zoom) keeps one encode per length, because a
+shorter clip with its own fade-out is not the opening of a longer one.
+
 **A zero exit code from FFmpeg is not proof it encoded anything.** A filter graph that yields no
 frames produces "Output file is empty, nothing was encoded" on stderr, a syntactically valid but
 stream-less container, and exit code 0. The empty file then travels downstream and fails somewhere

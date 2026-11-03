@@ -83,6 +83,12 @@ public sealed record SegmentExtractionRequest
     public required EncoderOptions EncoderOptions { get; init; }
 
     public required bool Mute { get; init; }
+
+    /// <summary>
+    /// True when some slot plays only the opening of this encode, so the stitcher will cut it
+    /// partway through and the extractor must write it to be cut exactly there.
+    /// </summary>
+    public bool Trimmed { get; init; }
 }
 
 public sealed record StitchRequest
@@ -92,6 +98,13 @@ public sealed record StitchRequest
     public required string OutputPath { get; init; }
 
     public required IReadOnlyList<TimeSpan> SegmentDurations { get; init; }
+
+    /// <summary>
+    /// How long each slot's file was encoded, where a file can be longer than its slot. A slot
+    /// plays only the opening <see cref="SegmentDurations"/> of its file. Null when every file is
+    /// exactly as long as its slot.
+    /// </summary>
+    public IReadOnlyList<TimeSpan>? EncodedDurations { get; init; }
 
     public required TransitionOptions Transition { get; init; }
 
@@ -110,6 +123,10 @@ public sealed record StitchRequest
 
     /// <summary>True when the segments' own audio should be joined.</summary>
     public bool UsesSegmentAudio => Audio.UsesSegmentAudio;
+
+    /// <summary>True when slot <paramref name="index"/> plays less than its whole file.</summary>
+    public bool IsTrimmed(int index) =>
+        EncodedDurations is { } encoded && encoded[index] > SegmentDurations[index];
 }
 
 /// <summary>Joins normalized segments into the finished render.</summary>

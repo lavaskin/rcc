@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using ReviewClips.Core.Options;
 using ReviewClips.Core.Pipeline;
+using ReviewClips.Ffmpeg.Extraction;
 using ReviewClips.Ffmpeg.Process;
 
 namespace ReviewClips.Ffmpeg.Stitching;
@@ -155,15 +156,21 @@ public sealed class FilterGraphStitcher : IStitcher
 public sealed record StitchPlan
 {
     private readonly IReadOnlyList<TimeSpan> _durations;
+    private readonly IReadOnlyList<bool> _trimmed;
+    private readonly double _frameRate;
     private readonly TransitionOptions _transition;
     private readonly TimeSpan _effectiveTransition;
 
     private StitchPlan(
         IReadOnlyList<TimeSpan> durations,
+        IReadOnlyList<bool> trimmed,
+        double frameRate,
         TransitionOptions transition,
         TimeSpan effectiveTransition)
     {
         _durations = durations;
+        _trimmed = trimmed;
+        _frameRate = frameRate;
         _transition = transition;
         _effectiveTransition = effectiveTransition;
     }
@@ -258,7 +265,9 @@ public sealed record StitchPlan
             requested = TimeSpan.Zero;
         }
 
-        return new StitchPlan(durations, request.Transition, requested);
+        var trimmed = Enumerable.Range(0, durations.Count).Select(request.IsTrimmed).ToList();
+
+        return new StitchPlan(durations, trimmed, request.Format.FrameRate, request.Transition, requested);
     }
 
     /// <summary>Offsets at which each successive xfade begins, in order.</summary>
@@ -288,6 +297,7 @@ public sealed record StitchPlan
     {
         var chains = new List<string>();
 
+        BuildTrims(chains, includeAudio);
         BuildVideoChains(chains);
 
         if (includeAudio)
@@ -298,6 +308,40 @@ public sealed record StitchPlan
         return string.Join(';', chains);
     }
 
+    /// <summary>
+    /// Cuts each trimmed slot down to its planned length, so everything downstream sees inputs
+    /// exactly as long as the offsets and fades were computed for. By frame count rather than by
+    /// time, matching how the extractor caps a segment, and the audio to the same frame-aligned
+    /// length so the two stay together.
+    /// </summary>
+    private void BuildTrims(List<string> chains, bool includeAudio)
+    {
+        for (var k = 0; k < _durations.Count; k++)
+        {
+            if (!_trimmed[k])
+            {
+                continue;
+            }
+
+            var frames = FfmpegSegmentExtractor.FrameCount(_durations[k], _frameRate);
+
+            var (videoTrim, length) = frames > 0
+                ? ($"trim=end_frame={frames}", TimeSpan.FromSeconds(frames / _frameRate))
+                : ($"trim=duration={Seconds(_durations[k])}", _durations[k]);
+
+            chains.Add($"[{k}:v]{videoTrim},setpts=PTS-STARTPTS[{VideoInput(k)}]");
+
+            if (includeAudio)
+            {
+                chains.Add($"[{k}:a]atrim=duration={Seconds(length)},asetpts=PTS-STARTPTS[{AudioInput(k)}]");
+            }
+        }
+    }
+
+    private string VideoInput(int k) => _trimmed[k] ? $"t{k}" : $"{k}:v";
+
+    private string AudioInput(int k) => _trimmed[k] ? $"ta{k}" : $"{k}:a";
+
     private void BuildVideoChains(List<string> chains)
     {
         var needsFades = HasFades;
@@ -307,18 +351,18 @@ public sealed record StitchPlan
         if (_durations.Count == 1)
         {
             joined = "j0";
-            chains.Add($"[0:v]null[{joined}]");
+            chains.Add($"[{VideoInput(0)}]null[{joined}]");
         }
         else if (UsesTransitions)
         {
             var offsets = TransitionOffsets();
-            var current = "0:v";
+            var current = VideoInput(0);
 
             for (var k = 1; k < _durations.Count; k++)
             {
                 var next = $"x{k}";
                 chains.Add(
-                    $"[{current}][{k}:v]xfade=transition={_transition.XfadeName}"
+                    $"[{current}][{VideoInput(k)}]xfade=transition={_transition.XfadeName}"
                     + $":duration={Seconds(_effectiveTransition)}"
                     + $":offset={Seconds(offsets[k - 1])}[{next}]");
                 current = next;
@@ -328,7 +372,7 @@ public sealed record StitchPlan
         }
         else
         {
-            var inputs = string.Concat(Enumerable.Range(0, _durations.Count).Select(i => $"[{i}:v]"));
+            var inputs = string.Concat(Enumerable.Range(0, _durations.Count).Select(i => $"[{VideoInput(i)}]"));
             joined = "cv";
             chains.Add($"{inputs}concat=n={_durations.Count}:v=1:a=0[{joined}]");
         }
@@ -363,19 +407,19 @@ public sealed record StitchPlan
 
         if (_durations.Count == 1)
         {
-            chains.Add($"[0:a]{tail}[{AudioOutputLabel}]");
+            chains.Add($"[{AudioInput(0)}]{tail}[{AudioOutputLabel}]");
             return;
         }
 
         if (UsesTransitions)
         {
             // acrossfade computes its own overlap, so no offsets are needed here.
-            var current = "0:a";
+            var current = AudioInput(0);
             for (var k = 1; k < _durations.Count; k++)
             {
                 var next = $"xa{k}";
                 chains.Add(
-                    $"[{current}][{k}:a]acrossfade=d={Seconds(_effectiveTransition)}:c1=tri:c2=tri[{next}]");
+                    $"[{current}][{AudioInput(k)}]acrossfade=d={Seconds(_effectiveTransition)}:c1=tri:c2=tri[{next}]");
                 current = next;
             }
 
@@ -383,7 +427,7 @@ public sealed record StitchPlan
             return;
         }
 
-        var inputs = string.Concat(Enumerable.Range(0, _durations.Count).Select(i => $"[{i}:a]"));
+        var inputs = string.Concat(Enumerable.Range(0, _durations.Count).Select(i => $"[{AudioInput(i)}]"));
         var joined = fades.Count > 0 ? "ca" : AudioOutputLabel;
 
         chains.Add($"{inputs}concat=n={_durations.Count}:v=0:a=1[{joined}]");
