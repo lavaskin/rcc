@@ -85,9 +85,8 @@ public sealed record SegmentExtractionRequest
     public required bool Mute { get; init; }
 
     /// <summary>
-    /// True when some slot plays only the opening of this encode. Written without B-frames,
-    /// because the concat demuxer cuts by decode timestamp and that matches display order only
-    /// when no frame is reordered.
+    /// True when some slot plays only the opening of this encode, so the stitcher will cut it
+    /// partway through and the extractor must write it to be cut exactly there.
     /// </summary>
     public bool Trimmed { get; init; }
 }

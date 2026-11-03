@@ -164,6 +164,24 @@ public class SharedEncodeTests
     }
 
     [Fact]
+    public async Task OneEncodePerSlotStillReportsTheClipCountWhenClipsRepeat()
+    {
+        var (harness, request) = Render(18, maxClips: 3);
+        request = request with { Look = LookOptions.None with { ZoomEnd = 1.08d } };
+        var plan = await harness.PlanAsync(request);
+
+        // Guards the premise: a repeat whose length differs, so every slot is its own encode.
+        plan.Segments.Count.ShouldBe(4);
+        plan.DistinctClipCount.ShouldBe(3);
+
+        var observer = new RecordingObserver();
+        await harness.Build().ExecuteAsync(plan, observer, TestContext.Current.CancellationToken);
+
+        harness.Extracted.Count.ShouldBe(4);
+        observer.ExtractingDetail.ShouldBe("3 unique clip(s) in 4 encode(s) filling 4 slot(s)");
+    }
+
+    [Fact]
     public void SharedEncodesAreNamedInOrderOfFirstUse()
     {
         var plan = ExtractionPlan.Create(

@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using ReviewClips.Core.Options;
 using ReviewClips.Core.Pipeline;
+using ReviewClips.Ffmpeg.Extraction;
 using ReviewClips.Ffmpeg.Process;
 
 namespace ReviewClips.Ffmpeg.Stitching;
@@ -322,7 +323,7 @@ public sealed record StitchPlan
                 continue;
             }
 
-            var frames = Extraction.FfmpegSegmentExtractor.FrameCount(_durations[k], _frameRate);
+            var frames = FfmpegSegmentExtractor.FrameCount(_durations[k], _frameRate);
 
             var (videoTrim, length) = frames > 0
                 ? ($"trim=end_frame={frames}", TimeSpan.FromSeconds(frames / _frameRate))

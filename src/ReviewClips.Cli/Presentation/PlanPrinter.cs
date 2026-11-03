@@ -111,14 +111,14 @@ internal static class PlanPrinter
 
         console.MarkupLine("[bold]FFmpeg commands[/]");
 
-        // Show the first extraction command in full (they differ only by timestamp) plus the
-        // stitch command, which is the interesting one.
+        // Show the first extraction command in full (the rest differ only in timing, and in
+        // B-frames for a clip some slot trims) plus the stitch command, which is the interesting one.
         if (commands.Count > 2)
         {
             console.MarkupLine(Styles.Faint($"# segment 1 of {commands.Count - 1}"));
             console.WriteLine(commands[0]);
             console.MarkupLine(Styles.Faint(
-                $"# ... {commands.Count - 2} further segment commands, identical but for -ss"));
+                $"# ... {commands.Count - 2} further segment commands, alike but for timing and B-frames"));
             console.MarkupLine(Styles.Faint("# stitch"));
             console.WriteLine(commands[^1]);
         }

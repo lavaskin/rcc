@@ -428,7 +428,8 @@ public sealed class RenderPipeline
         var extraction = CreateExtractionPlan(plan, workDir);
 
         var lines = extraction.Jobs
-            .Select(job => "ffmpeg " + Quote(_extractor.DescribeArguments(BuildExtractionRequest(plan, job, infoByPath))))
+            .Select(job => BuildExtractionRequest(plan, job, infoByPath))
+            .Select(extract => "ffmpeg " + Quote(_extractor.DescribeArguments(extract)))
             .ToList();
 
         var stitchRequest = BuildStitchRequest(plan, extraction, workDir);
@@ -454,7 +455,7 @@ public sealed class RenderPipeline
         var slots = plan.Segments.Count;
         var distinct = plan.DistinctClipCount;
 
-        if (encodes == slots)
+        if (encodes == slots && distinct == slots)
         {
             return $"{slots} clip(s)";
         }

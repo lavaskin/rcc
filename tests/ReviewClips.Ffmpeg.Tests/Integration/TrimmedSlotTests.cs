@@ -132,7 +132,12 @@ public class TrimmedSlotTests
         return (a, b, encoder);
     }
 
-    private async Task<string> ExtractAsync(MediaInfo info, EncoderProfile encoder, double start, bool trimmed, bool mute)
+    private async Task<string> ExtractAsync(
+        MediaInfo info,
+        EncoderProfile encoder,
+        double start,
+        bool trimmed,
+        bool mute)
     {
         var output = _fixture.PathFor($"trim_{Guid.NewGuid():N}.mp4");
 
