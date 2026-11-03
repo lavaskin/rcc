@@ -17,6 +17,14 @@ internal sealed class PipelineHarness
 {
     private readonly Dictionary<string, MediaInfo> _sources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TimeSpan> _audioDurations = new(StringComparer.Ordinal);
+    private readonly StubExtractor _extractor = new();
+    private readonly StubStitcher _stitcher = new();
+
+    /// <summary>Every extraction an executed render asked for, in no particular order.</summary>
+    public IReadOnlyList<SegmentExtractionRequest> Extracted => _extractor.Requests;
+
+    /// <summary>The stitch an executed render asked for, or null before one has run.</summary>
+    public StitchRequest? Stitched => _stitcher.Last;
 
     /// <summary>Registers a source of the given length and returns its path.</summary>
     public string AddSource(string name, TimeSpan duration)
@@ -57,8 +65,8 @@ internal sealed class PipelineHarness
         new StubAnalyzer(),
         new StubCache(),
         new StubEncoderSelector(),
-        new StubExtractor(),
-        [new StubStitcher()],
+        _extractor,
+        [_stitcher],
         SegmentSelectorFactory.CreateDefault(),
         NullLogger<RenderPipeline>.Instance);
 
@@ -171,23 +179,65 @@ internal sealed class PipelineHarness
 
     private sealed class StubExtractor : ISegmentExtractor
     {
+        private readonly List<SegmentExtractionRequest> _requests = [];
+
+        public IReadOnlyList<SegmentExtractionRequest> Requests
+        {
+            get
+            {
+                lock (_requests)
+                {
+                    return [.. _requests];
+                }
+            }
+        }
+
         public Task ExtractAsync(
             SegmentExtractionRequest request,
             IProgress<double>? progress,
-            CancellationToken cancellationToken) => Task.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            // The pipeline extracts in parallel.
+            lock (_requests)
+            {
+                _requests.Add(request);
+            }
+
+            return Task.CompletedTask;
+        }
 
         public IReadOnlyList<string> DescribeArguments(SegmentExtractionRequest request) =>
-            ["-i", request.Segment.SourcePath, request.OutputPath];
+            DescribeExtraction(request);
     }
+
+    /// <summary>
+    /// What the stub extractor prints for a dry run: everything that decides an encode, with the
+    /// output reduced to its file name so a dry run and an executed render compare equal despite
+    /// their different working directories.
+    /// </summary>
+    public static IReadOnlyList<string> DescribeExtraction(SegmentExtractionRequest request) =>
+    [
+        "-i", request.Segment.SourcePath,
+        "-ss", request.Segment.Start.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        "-t", request.Segment.Duration.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        request.Trimmed ? "trimmed" : "whole",
+        Path.GetFileName(request.OutputPath),
+    ];
 
     private sealed class StubStitcher : IStitcher
     {
+        public StitchRequest? Last { get; private set; }
+
         public bool CanHandle(StitchRequest request) => true;
 
         public Task StitchAsync(
             StitchRequest request,
             IProgress<double>? progress,
-            CancellationToken cancellationToken) => Task.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            Last = request;
+            return Task.CompletedTask;
+        }
 
         public IReadOnlyList<string> DescribeArguments(StitchRequest request) => ["-i", request.OutputPath];
     }

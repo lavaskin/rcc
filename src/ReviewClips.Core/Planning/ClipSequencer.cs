@@ -76,8 +76,8 @@ public static class ClipSequencer
     /// Repeats <paramref name="distinct"/> until the durations sum to <paramref name="materialTotal"/>.
     /// <para>
     /// The pool is reshuffled on every pass and a clip never follows itself across a cycle
-    /// boundary. Repeated entries keep identical start and duration, which lets the pipeline
-    /// encode each one once and reference it many times.
+    /// boundary. Repeated entries keep their start, which lets the pipeline encode each one once
+    /// and reference it many times; only the final slot's length is changed to land on the total.
     /// </para>
     /// </summary>
     /// <param name="minimumSegment">
